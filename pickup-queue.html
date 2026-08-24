@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Court Queue</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Teko:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Only used if you fill in firebaseConfig below, for live sync across phones -->
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
+<style>
+  :root{
+    --bg:#14181c;
+    --panel:#1c2126;
+    --panel-2:#20262c;
+    --line:#2c333a;
+    --red:#c23b2e;
+    --red-dim:#3a1f1c;
+    --blue:#2e6f95;
+    --blue-dim:#1c2c36;
+    --chalk:#f2ede4;
+    --muted:#8a94a0;
+    --gold:#e8b34c;
+    --wood:#b9793e;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--chalk);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .display{font-family:'Teko',sans-serif; font-weight:600; letter-spacing:0.02em;}
+
+  #app{max-width:640px; margin:0 auto; padding:14px 14px 60px;}
+
+  /* header */
+  .head{display:flex; align-items:center; justify-content:space-between; padding:6px 2px 14px;}
+  .head .brand{display:flex; align-items:center; gap:10px;}
+  .ball{width:22px; height:22px; border-radius:50%; background:radial-gradient(circle at 32% 30%, #f2a24a, var(--wood) 70%); position:relative; flex-shrink:0;}
+  .ball::before, .ball::after{content:""; position:absolute; background:#14181c; opacity:0.55;}
+  .ball::before{left:50%; top:0; bottom:0; width:2px; transform:translateX(-50%);}
+  .ball::after{top:50%; left:0; right:0; height:2px; transform:translateY(-50%);}
+  .head h1{font-size:26px; margin:0; letter-spacing:0.03em; text-transform:uppercase; line-height:1;}
+  .head .sub{font-size:11px; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase; margin-top:2px;}
+  .reset-btn{background:none; border:1px solid var(--line); color:var(--muted); font-size:11px; letter-spacing:0.05em; text-transform:uppercase; padding:7px 10px; border-radius:7px; cursor:pointer;}
+  .reset-btn:active{background:var(--panel-2);}
+
+  /* court */
+  .court{position:relative; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:16px; margin-bottom:16px;}
+  .court-row{display:flex; align-items:stretch; gap:8px; position:relative;}
+  .team{flex:1; min-width:0; background:var(--panel-2); border-radius:12px; padding:12px 10px 14px; border-top:3px solid transparent;}
+  .team.a{border-top-color:var(--red);}
+  .team.b{border-top-color:var(--blue);}
+  .team-label{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;}
+  .team-label .name{font-family:'Teko',sans-serif; font-size:19px; letter-spacing:0.04em; text-transform:uppercase;}
+  .team.a .name{color:#e8867a;}
+  .team.b .name{color:#7fb9db;}
+  .streak{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;}
+  .roster{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:5px;}
+  .roster li{font-size:13.5px; color:var(--chalk); padding:5px 8px; background:rgba(255,255,255,0.03); border-radius:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .roster li.empty{color:var(--muted); font-style:italic; background:transparent; border:1px dashed var(--line);}
+
+  .center-badge{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:52px; height:52px; border-radius:50%;
+    background:var(--bg); border:2px solid var(--gold);
+    display:flex; align-items:center; justify-content:center; flex-direction:column;
+    z-index:2;
+  }
+  .center-badge .g{font-size:9px; color:var(--muted); letter-spacing:0.1em; text-transform:uppercase; margin-bottom:-3px;}
+  .center-badge .n{font-family:'Teko',sans-serif; font-size:24px; color:var(--gold); line-height:1;}
+
+  .action{margin-top:14px;}
+  .win-row{display:flex; gap:8px;}
+  .btn{
+    flex:1; border:none; border-radius:10px; padding:13px 10px; font-family:'Teko',sans-serif;
+    font-size:18px; letter-spacing:0.03em; text-transform:uppercase; cursor:pointer; color:var(--chalk);
+  }
+  .btn:active{filter:brightness(1.15);}
+  .btn.win-a{background:var(--red);}
+  .btn.win-b{background:var(--blue);}
+  .btn.next{width:100%; background:var(--gold); color:#241a05;}
+  .waiting-msg{text-align:center; color:var(--muted); font-size:13px; padding:10px 4px 2px; line-height:1.5;}
+
+  /* join */
+  .join{display:flex; gap:8px; margin-bottom:16px;}
+  .join input{
+    flex:1; background:var(--panel); border:1px solid var(--line); color:var(--chalk);
+    padding:13px 14px; border-radius:10px; font-size:15px; font-family:'Inter',sans-serif; min-width:0;
+  }
+  .join input::placeholder{color:var(--muted);}
+  .join input:focus{outline:none; border-color:var(--gold);}
+  .join button{
+    background:var(--wood); color:#1a1108; border:none; border-radius:10px; padding:0 18px;
+    font-family:'Teko',sans-serif; font-size:17px; letter-spacing:0.03em; text-transform:uppercase; cursor:pointer;
+  }
+  .join button:disabled{opacity:0.4;}
+
+  /* bench */
+  .bench-head{display:flex; align-items:baseline; justify-content:space-between; margin:4px 2px 8px;}
+  .bench-head h2{font-family:'Teko',sans-serif; font-size:18px; letter-spacing:0.05em; text-transform:uppercase; margin:0; color:var(--muted);}
+  .bench-head span{font-size:12px; color:var(--muted);}
+  .bench-list{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;}
+  .bench-list li{
+    display:flex; align-items:center; gap:10px; background:var(--panel);
+    border:1px solid var(--line); border-radius:10px; padding:8px 10px;
+  }
+  .pos{
+    width:26px; height:26px; border-radius:50%; background:var(--panel-2); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-family:'Teko',sans-serif; font-size:14px; color:var(--muted); flex-shrink:0;
+  }
+  .bname{flex:1; min-width:0; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .gcount{font-size:11px; color:var(--muted); flex-shrink:0;}
+  .leave-btn{
+    background:none; border:none; color:var(--muted); font-size:18px; line-height:1; cursor:pointer; padding:2px 6px; flex-shrink:0;
+  }
+  .leave-btn:active{color:var(--red);}
+  .empty-bench{color:var(--muted); font-size:13px; text-align:center; padding:16px 0;}
+
+  .toast{
+    position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
+    background:var(--panel-2); border:1px solid var(--line); color:var(--chalk);
+    padding:9px 16px; border-radius:20px; font-size:13px; opacity:0; pointer-events:none; transition:opacity 0.25s;
+    z-index:50; white-space:nowrap;
+  }
+  .toast.show{opacity:1;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="head">
+    <div class="brand">
+      <div class="ball"></div>
+      <div>
+        <h1>Court Queue</h1>
+        <div class="sub" id="subhead">loading…</div>
+      </div>
+    </div>
+    <button class="reset-btn" id="resetBtn">New Night</button>
+  </div>
+
+  <div class="join">
+    <input id="nameInput" type="text" placeholder="Your name" maxlength="24" autocomplete="off">
+    <button id="joinBtn">Join</button>
+  </div>
+
+  <div class="court" id="courtWrap"></div>
+
+  <div class="bench-head">
+    <h2>Bench</h2>
+    <span id="benchCount">0 waiting</span>
+  </div>
+  <ul class="bench-list" id="benchList"></ul>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const STORAGE_KEY = 'pickup-state-v1';
+let state = null;
+let saving = false;
+
+function defaultState(){
+  return {
+    players: {},        // id -> {name, totalGames}
+    queue: [],           // array of ids, FIFO
+    slots: {
+      A: { ids: [], stint: 0 },
+      B: { ids: [], stint: 0 }
+    },
+    gameNumber: 0,        // 0 = no game started yet
+    needsWinner: false,   // true only while game 1's result is pending
+  };
+}
+
+function uid(){
+  return 'p' + Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-4);
+}
+
+// ---- storage: three modes ----
+// 1. Firebase (fill in firebaseConfig below) -> real-time sync across every phone.
+// 2. Claude's built-in cloud storage, when running inside a Claude artifact.
+// 3. localStorage fallback -> works standalone, but only on that one device.
+const firebaseConfig = {
+  // Paste your Firebase project's config here. Leave apiKey as-is to skip Firebase.
+  apiKey: "AIzaSyDHC1fvj1SEDbzArQRaW1E8AG3QBsNH66M",
+  databaseURL: "https://sbc-hoops-default-rtdb.firebaseio.com/",
+};
+
+const hasFirebase = firebaseConfig.apiKey !== "YOUR_API_KEY" && typeof firebase !== 'undefined';
+const hasCloudStorage = (typeof window.storage !== 'undefined');
+
+let fbRef = null;
+if(hasFirebase){
+  firebase.initializeApp(firebaseConfig);
+  fbRef = firebase.database().ref(STORAGE_KEY);
+}
+
+// Firebase silently drops empty arrays/objects when saving, so a fresh read
+// back can be missing keys entirely — fill them back in with safe defaults.
+function normalizeState(val){
+  if(!val) return defaultState();
+  return {
+    players: val.players || {},
+    queue: val.queue || [],
+    slots: {
+      A: { ids: (val.slots && val.slots.A && val.slots.A.ids) || [], stint: (val.slots && val.slots.A && val.slots.A.stint) || 0 },
+      B: { ids: (val.slots && val.slots.B && val.slots.B.ids) || [], stint: (val.slots && val.slots.B && val.slots.B.stint) || 0 },
+    },
+    gameNumber: val.gameNumber || 0,
+    needsWinner: !!val.needsWinner,
+  };
+}
+
+async function loadState(){
+  try{
+    if(hasFirebase){
+      const snap = await fbRef.once('value');
+      const val = snap.val();
+      if(val) return normalizeState(val);
+    } else if(hasCloudStorage){
+      const res = await window.storage.get(STORAGE_KEY, true);
+      if(res && res.value) return JSON.parse(res.value);
+    } else {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw) return JSON.parse(raw);
+    }
+  }catch(e){ /* key doesn't exist yet */ }
+  return defaultState();
+}
+
+async function saveState(s){
+  if(hasFirebase){
+    await fbRef.set(s);
+  } else if(hasCloudStorage){
+    await window.storage.set(STORAGE_KEY, JSON.stringify(s), true);
+  } else {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  }
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+// pull players from the front of the queue into a slot, respecting availability
+function tryFillSlots(s){
+  const bothEmpty = s.slots.A.ids.length===0 && s.slots.B.ids.length===0;
+
+  if(bothEmpty && s.gameNumber===0){
+    // initial fill: first 10 randomized into two teams of 5
+    if(s.queue.length >= 10){
+      const first10 = s.queue.slice(0,10);
+      s.queue = s.queue.slice(10);
+      const shuffled = shuffle(first10);
+      s.slots.A = { ids: shuffled.slice(0,5), stint: 0 };
+      s.slots.B = { ids: shuffled.slice(5,10), stint: 0 };
+      s.gameNumber = 1;
+      s.needsWinner = true;
+    }
+    return;
+  }
+
+  ['A','B'].forEach(k=>{
+    const slot = s.slots[k];
+    if(slot.ids.length===0 && s.queue.length>=5){
+      slot.ids = s.queue.slice(0,5);
+      s.queue = s.queue.slice(5);
+      slot.stint = 0;
+    }
+  });
+}
+
+function addPlayer(s, name){
+  const id = uid();
+  s.players[id] = { name, totalGames: 0 };
+  s.queue.push(id);
+  tryFillSlots(s);
+}
+
+function removeFromQueue(s, id){
+  s.queue = s.queue.filter(x=>x!==id);
+  delete s.players[id];
+}
+
+function recordWinner(s, winnerKey){
+  const loserKey = winnerKey==='A' ? 'B' : 'A';
+  const winSlot = s.slots[winnerKey];
+  const loseSlot = s.slots[loserKey];
+
+  // everyone who just played gets a game credit
+  [...winSlot.ids, ...loseSlot.ids].forEach(id=>{
+    if(s.players[id]) s.players[id].totalGames += 1;
+  });
+
+  winSlot.stint = 1;
+  // loser heads to the back of the queue, done for this stint
+  loseSlot.ids.forEach(id=> s.queue.push(id));
+  loseSlot.ids = [];
+  loseSlot.stint = 0;
+
+  s.needsWinner = false;
+  s.gameNumber += 1;
+  tryFillSlots(s);
+}
+
+function nextGame(s){
+  ['A','B'].forEach(k=>{
+    const slot = s.slots[k];
+    if(slot.ids.length===5){
+      slot.stint += 1;
+      slot.ids.forEach(id=>{ if(s.players[id]) s.players[id].totalGames += 1; });
+    }
+  });
+  ['A','B'].forEach(k=>{
+    const slot = s.slots[k];
+    if(slot.ids.length===5 && slot.stint>=2){
+      slot.ids.forEach(id=> s.queue.push(id));
+      slot.ids = [];
+      slot.stint = 0;
+    }
+  });
+  s.gameNumber += 1;
+  tryFillSlots(s);
+}
+
+// ---- rendering ----
+function playerName(s, id){
+  return s.players[id] ? s.players[id].name : '—';
+}
+
+function render(s){
+  const sub = document.getElementById('subhead');
+  const totalIn = Object.keys(s.players).length;
+  sub.textContent = s.gameNumber===0
+    ? `waiting for ${Math.max(0,10-totalIn)} more to start`
+    : `${totalIn} on the list tonight`;
+
+  // court
+  const wrap = document.getElementById('courtWrap');
+  const aFull = s.slots.A.ids.length===5;
+  const bFull = s.slots.B.ids.length===5;
+  const bothFull = aFull && bFull;
+
+  const rosterHtml = (slot) => {
+    if(slot.ids.length===0){
+      return '<li class="empty">waiting for players</li>';
+    }
+    return slot.ids.map(id=>`<li>${escapeHtml(playerName(s,id))}</li>`).join('');
+  };
+
+  let actionHtml = '';
+  if(s.gameNumber===0){
+    actionHtml = `<div class="waiting-msg">Court starts once 10 people have joined. First 10 get randomized into two teams.</div>`;
+  } else if(!bothFull){
+    const need = (5-s.slots.A.ids.length) + (5-s.slots.B.ids.length);
+    actionHtml = `<div class="waiting-msg">Waiting on ${need} more from the bench to fill both teams.</div>`;
+  } else if(s.needsWinner){
+    actionHtml = `
+      <div class="waiting-msg" style="margin-bottom:8px;">Game 1 — who won?</div>
+      <div class="win-row">
+        <button class="btn win-a" data-action="win-a">Team A won</button>
+        <button class="btn win-b" data-action="win-b">Team B won</button>
+      </div>`;
+  } else {
+    actionHtml = `<button class="btn next" data-action="next">Game finished → next game</button>`;
+  }
+
+  wrap.innerHTML = `
+    <div class="court-row">
+      <div class="team a">
+        <div class="team-label">
+          <span class="name">Team A</span>
+          <span class="streak">${s.slots.A.stint>=1 ? 'game '+(s.slots.A.stint+1)+' this stint' : ''}</span>
+        </div>
+        <ul class="roster">${rosterHtml(s.slots.A)}</ul>
+      </div>
+      <div class="team b">
+        <div class="team-label">
+          <span class="name">Team B</span>
+          <span class="streak">${s.slots.B.stint>=1 ? 'game '+(s.slots.B.stint+1)+' this stint' : ''}</span>
+        </div>
+        <ul class="roster">${rosterHtml(s.slots.B)}</ul>
+      </div>
+      ${s.gameNumber>0 ? `<div class="center-badge"><span class="g">Game</span><span class="n">${s.gameNumber}</span></div>` : ''}
+    </div>
+    <div class="action">${actionHtml}</div>
+  `;
+
+  wrap.querySelectorAll('[data-action]').forEach(btn=>{
+    btn.addEventListener('click', onAction);
+  });
+
+  // bench
+  const benchList = document.getElementById('benchList');
+  document.getElementById('benchCount').textContent = `${s.queue.length} waiting`;
+  if(s.queue.length===0){
+    benchList.innerHTML = `<li class="empty-bench" style="list-style:none;">Bench is empty — join above</li>`;
+  } else {
+    benchList.innerHTML = s.queue.map((id,i)=>{
+      const p = s.players[id];
+      if(!p) return '';
+      return `<li>
+        <div class="pos">${i+1}</div>
+        <div class="bname">${escapeHtml(p.name)}</div>
+        <div class="gcount">${p.totalGames} gm${p.totalGames===1?'':'s'}</div>
+        <button class="leave-btn" data-leave="${id}" title="Remove — left">✕</button>
+      </li>`;
+    }).join('');
+    benchList.querySelectorAll('[data-leave]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const id = btn.getAttribute('data-leave');
+        const name = state.players[id] ? state.players[id].name : 'Player';
+        state = await loadState();
+        removeFromQueue(state, id);
+        await saveState(state);
+        showToast(`${name} left the queue`);
+        render(state);
+      });
+    });
+  }
+}
+
+function escapeHtml(str){
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+async function onAction(e){
+  const action = e.currentTarget.getAttribute('data-action');
+  state = await loadState();
+  if(action==='win-a') recordWinner(state, 'A');
+  else if(action==='win-b') recordWinner(state, 'B');
+  else if(action==='next') nextGame(state);
+  await saveState(state);
+  render(state);
+}
+
+async function handleJoin(){
+  const input = document.getElementById('nameInput');
+  const name = input.value.trim();
+  if(!name) return;
+  const btn = document.getElementById('joinBtn');
+  btn.disabled = true;
+  state = await loadState();
+  addPlayer(state, name);
+  await saveState(state);
+  input.value = '';
+  btn.disabled = false;
+  showToast(`${name} joined the queue`);
+  render(state);
+  input.focus();
+}
+
+document.getElementById('joinBtn').addEventListener('click', handleJoin);
+document.getElementById('nameInput').addEventListener('keydown', (e)=>{
+  if(e.key==='Enter') handleJoin();
+});
+document.getElementById('resetBtn').addEventListener('click', async ()=>{
+  if(!confirm('Start a new night? This clears everyone on the list and the court.')) return;
+  state = defaultState();
+  await saveState(state);
+  render(state);
+  showToast('New night started');
+});
+
+// live refresh so every phone stays in sync
+let inFlight = false;
+async function poll(){
+  if(inFlight) return;
+  inFlight = true;
+  try{
+    const fresh = await loadState();
+    // avoid clobbering an in-progress name entry
+    const typing = document.activeElement === document.getElementById('nameInput') && document.getElementById('nameInput').value.length>0;
+    if(!typing){
+      state = fresh;
+      render(state);
+    }
+  }catch(e){ /* ignore transient errors */ }
+  inFlight = false;
+}
+
+(async function init(){
+  state = await loadState();
+  render(state);
+  if(hasFirebase){
+    // instant updates on every phone whenever anyone changes the state
+    fbRef.on('value', (snap)=>{
+      const val = snap.val();
+      const typing = document.activeElement === document.getElementById('nameInput') && document.getElementById('nameInput').value.length>0;
+      if(val && !typing){
+        state = normalizeState(val);
+        render(state);
+      }
+    });
+  } else {
+    setInterval(poll, 2500);
+  }
+})();
+</script>
+</body>
+</html>
