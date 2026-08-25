@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Court Queue</title>
+<title>SBC Court Queue</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Teko:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- Only used if you fill in firebaseConfig below, for live sync across phones -->
@@ -114,12 +114,36 @@
     display:flex; align-items:center; justify-content:center; font-family:'Teko',sans-serif; font-size:14px; color:var(--muted); flex-shrink:0;
   }
   .bname{flex:1; min-width:0; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .bname.struck{text-decoration:line-through; color:var(--muted);}
   .gcount{font-size:11px; color:var(--muted); flex-shrink:0;}
   .leave-btn{
     background:none; border:none; color:var(--muted); font-size:18px; line-height:1; cursor:pointer; padding:2px 6px; flex-shrink:0;
   }
   .leave-btn:active{color:var(--red);}
+  .restore-btn{color:#4caf6e;}
+  .restore-btn:active{color:#6fd18f;}
+  .dim-btn{opacity:0.25;}
   .empty-bench{color:var(--muted); font-size:13px; text-align:center; padding:16px 0;}
+
+  .bench-list li.next-up{border-color:#3e8a5c; background:rgba(76,175,110,0.10);}
+  .bench-list li.next-up .pos{border-color:#4caf6e; color:#6fd18f;}
+  .next-tag{font-size:9px; color:#6fd18f; letter-spacing:0.06em; text-transform:uppercase; flex-shrink:0;}
+  .bench-list li.absent{opacity:0.55;}
+
+  .btn.back{
+    width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--muted);
+    margin-top:8px; padding:10px; font-size:15px;
+  }
+  .admin-on{color:var(--gold) !important; border-color:var(--gold) !important;}
+
+  .hist-list{max-height:300px; overflow-y:auto;}
+  .hist-list li{flex-direction:column; align-items:stretch; gap:4px;}
+  .hist-top{display:flex; justify-content:space-between; font-size:11px; color:var(--muted); letter-spacing:0.03em;}
+  .hist-top .hist-game{font-family:'Teko',sans-serif; font-size:14px; color:var(--gold); letter-spacing:0.04em; text-transform:uppercase;}
+  .hist-teams{font-size:12.5px; color:var(--chalk); display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
+  .hist-teams .vs{color:var(--muted); font-size:10px; text-transform:uppercase;}
+  .hist-teams .ta{color:#e8867a;}
+  .hist-teams .tb{color:#7fb9db;}
 
   .toast{
     position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
@@ -136,11 +160,14 @@
     <div class="brand">
       <div class="ball"></div>
       <div>
-        <h1>Court Queue</h1>
+        <h1>SBC Court Queue</h1>
         <div class="sub" id="subhead">loading…</div>
       </div>
     </div>
-    <button class="reset-btn" id="resetBtn">New Night</button>
+    <div style="display:flex; gap:6px;">
+      <button class="reset-btn" id="adminBtn">🔒 Admin</button>
+      <button class="reset-btn" id="resetBtn">New Night</button>
+    </div>
   </div>
 
   <div class="join">
@@ -155,6 +182,12 @@
     <span id="benchCount">0 waiting</span>
   </div>
   <ul class="bench-list" id="benchList"></ul>
+
+  <div class="bench-head" style="margin-top:20px;">
+    <h2>History</h2>
+    <span id="historyCount">0 games played</span>
+  </div>
+  <ul class="bench-list hist-list" id="historyList"></ul>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -174,11 +207,68 @@ function defaultState(){
     },
     gameNumber: 0,        // 0 = no game started yet
     needsWinner: false,   // true only while game 1's result is pending
+    gameLog: [],           // finalized games: {gameNumber, teamA:[names], teamB:[names], winner, ts}
+    undoStack: [],          // snapshots to revert to if "Back a game" is used
   };
 }
 
 function uid(){
   return 'p' + Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-4);
+}
+
+// ---- admin lock ----
+// Only people who know this PIN can pick winners, advance games, or undo.
+// Change this to something only Shannon and David know, then re-upload.
+const ADMIN_PIN = "2468";
+const ADMIN_KEY = 'sbc-admin-unlocked';
+
+function isUnlocked(){
+  return localStorage.getItem(ADMIN_KEY) === 'yes';
+}
+function requestUnlock(){
+  const pin = prompt('Enter the admin PIN to manage the queue:');
+  if(pin === null) return false;
+  if(pin === ADMIN_PIN){
+    localStorage.setItem(ADMIN_KEY, 'yes');
+    updateAdminBtn();
+    return true;
+  }
+  alert('Wrong PIN.');
+  return false;
+}
+function ensureUnlocked(){
+  if(isUnlocked()) return true;
+  return requestUnlock();
+}
+function updateAdminBtn(){
+  const btn = document.getElementById('adminBtn');
+  if(!btn) return;
+  if(isUnlocked()){
+    btn.textContent = '🔓 Admin';
+    btn.classList.add('admin-on');
+  } else {
+    btn.textContent = '🔒 Admin';
+    btn.classList.remove('admin-on');
+  }
+}
+
+// ---- "who's mine" tracking ----
+// Without a PIN, a device can only strike out / restore the name(s) it added itself.
+const MY_IDS_KEY = 'sbc-my-ids';
+function getMyIds(){
+  try{ return JSON.parse(localStorage.getItem(MY_IDS_KEY) || '[]'); }
+  catch(e){ return []; }
+}
+function addMyId(id){
+  const ids = getMyIds();
+  ids.push(id);
+  localStorage.setItem(MY_IDS_KEY, JSON.stringify(ids));
+}
+function isMine(id){
+  return getMyIds().includes(id);
+}
+function canManage(id){
+  return isUnlocked() || isMine(id);
 }
 
 // ---- storage: three modes ----
@@ -213,6 +303,8 @@ function normalizeState(val){
     },
     gameNumber: val.gameNumber || 0,
     needsWinner: !!val.needsWinner,
+    gameLog: val.gameLog || [],
+    undoStack: val.undoStack || [],
   };
 }
 
@@ -261,14 +353,23 @@ function shuffle(arr){
 }
 
 // pull players from the front of the queue into a slot, respecting availability
+// and skipping anyone currently marked absent (struck out on the bench)
 function tryFillSlots(s){
   const bothEmpty = s.slots.A.ids.length===0 && s.slots.B.ids.length===0;
 
+  function takeActive(n){
+    const activeIds = s.queue.filter(id => s.players[id] && !s.players[id].absent);
+    if(activeIds.length < n) return null;
+    const chosen = activeIds.slice(0, n);
+    const chosenSet = new Set(chosen);
+    s.queue = s.queue.filter(id => !chosenSet.has(id));
+    return chosen;
+  }
+
   if(bothEmpty && s.gameNumber===0){
-    // initial fill: first 10 randomized into two teams of 5
-    if(s.queue.length >= 10){
-      const first10 = s.queue.slice(0,10);
-      s.queue = s.queue.slice(10);
+    // initial fill: first 10 active randomized into two teams of 5
+    const first10 = takeActive(10);
+    if(first10){
       const shuffled = shuffle(first10);
       s.slots.A = { ids: shuffled.slice(0,5), stint: 0 };
       s.slots.B = { ids: shuffled.slice(5,10), stint: 0 };
@@ -280,27 +381,80 @@ function tryFillSlots(s){
 
   ['A','B'].forEach(k=>{
     const slot = s.slots[k];
-    if(slot.ids.length===0 && s.queue.length>=5){
-      slot.ids = s.queue.slice(0,5);
-      s.queue = s.queue.slice(5);
-      slot.stint = 0;
+    if(slot.ids.length===0){
+      const five = takeActive(5);
+      if(five){
+        slot.ids = five;
+        slot.stint = 0;
+      }
     }
   });
 }
 
 function addPlayer(s, name){
   const id = uid();
-  s.players[id] = { name, totalGames: 0 };
+  s.players[id] = { name, totalGames: 0, absent: false };
   s.queue.push(id);
+  tryFillSlots(s);
+  return id;
+}
+
+function markAbsent(s, id){
+  if(s.players[id]) s.players[id].absent = true;
+}
+
+function markPresent(s, id){
+  if(s.players[id]) s.players[id].absent = false;
   tryFillSlots(s);
 }
 
-function removeFromQueue(s, id){
-  s.queue = s.queue.filter(x=>x!==id);
-  delete s.players[id];
+function playerNameSafe(s, id){
+  return s.players[id] ? s.players[id].name : '—';
+}
+
+// saved right before any game-advancing action, so "Back a game" can restore it
+function pushUndoSnapshot(s){
+  if(!s.undoStack) s.undoStack = [];
+  s.undoStack.push({
+    players: JSON.parse(JSON.stringify(s.players)),
+    queue: s.queue.slice(),
+    slots: JSON.parse(JSON.stringify(s.slots)),
+    gameNumber: s.gameNumber,
+    needsWinner: s.needsWinner,
+    gameLog: (s.gameLog || []).slice(),
+  });
+  if(s.undoStack.length > 8) s.undoStack.shift();
+}
+
+function logGame(s, gameNumber, teamAIds, teamBIds, winnerKey){
+  if(!s.gameLog) s.gameLog = [];
+  s.gameLog.push({
+    gameNumber,
+    teamA: teamAIds.map(id=>playerNameSafe(s,id)),
+    teamB: teamBIds.map(id=>playerNameSafe(s,id)),
+    winner: winnerKey, // 'A' | 'B' | null
+    ts: Date.now(),
+  });
+  if(s.gameLog.length > 300) s.gameLog.shift();
+}
+
+function undoLastGame(s){
+  if(!s.undoStack || s.undoStack.length===0) return false;
+  const snap = s.undoStack.pop();
+  s.players = snap.players;
+  s.queue = snap.queue;
+  s.slots = snap.slots;
+  s.gameNumber = snap.gameNumber;
+  s.needsWinner = snap.needsWinner;
+  s.gameLog = snap.gameLog;
+  return true;
 }
 
 function recordWinner(s, winnerKey){
+  pushUndoSnapshot(s);
+  const finishedGameNumber = s.gameNumber;
+  logGame(s, finishedGameNumber, s.slots.A.ids, s.slots.B.ids, winnerKey);
+
   const loserKey = winnerKey==='A' ? 'B' : 'A';
   const winSlot = s.slots[winnerKey];
   const loseSlot = s.slots[loserKey];
@@ -322,6 +476,9 @@ function recordWinner(s, winnerKey){
 }
 
 function nextGame(s){
+  pushUndoSnapshot(s);
+  logGame(s, s.gameNumber, s.slots.A.ids, s.slots.B.ids, null);
+
   ['A','B'].forEach(k=>{
     const slot = s.slots[k];
     if(slot.ids.length===5){
@@ -382,6 +539,9 @@ function render(s){
   } else {
     actionHtml = `<button class="btn next" data-action="next">Game finished → next game</button>`;
   }
+  if(s.undoStack && s.undoStack.length>0){
+    actionHtml += `<button class="btn back" data-action="undo">↩ Back a game</button>`;
+  }
 
   wrap.innerHTML = `
     <div class="court-row">
@@ -414,27 +574,80 @@ function render(s){
   if(s.queue.length===0){
     benchList.innerHTML = `<li class="empty-bench" style="list-style:none;">Bench is empty — join above</li>`;
   } else {
-    benchList.innerHTML = s.queue.map((id,i)=>{
+    const highlightCount = s.gameNumber===0 ? 10 : 5;
+    const activeOrdered = s.queue.filter(id => s.players[id] && !s.players[id].absent);
+    const nextUpSet = new Set(activeOrdered.slice(0, highlightCount));
+
+    let activePos = 0;
+    benchList.innerHTML = s.queue.map((id)=>{
       const p = s.players[id];
       if(!p) return '';
-      return `<li>
-        <div class="pos">${i+1}</div>
-        <div class="bname">${escapeHtml(p.name)}</div>
+      const isAbsent = !!p.absent;
+      const isNext = !isAbsent && nextUpSet.has(id);
+      let posLabel;
+      if(isAbsent){ posLabel = '—'; } else { activePos++; posLabel = activePos; }
+      return `<li class="${isAbsent?'absent':''} ${isNext?'next-up':''}">
+        <div class="pos">${posLabel}</div>
+        <div class="bname ${isAbsent?'struck':''}">${escapeHtml(p.name)}</div>
+        ${isNext ? `<span class="next-tag">Next</span>` : ''}
         <div class="gcount">${p.totalGames} gm${p.totalGames===1?'':'s'}</div>
-        <button class="leave-btn" data-leave="${id}" title="Remove — left">✕</button>
+        ${isAbsent
+          ? `<button class="leave-btn restore-btn ${canManage(id)?'':'dim-btn'}" data-restore="${id}" title="Mark present">✓</button>`
+          : `<button class="leave-btn ${canManage(id)?'':'dim-btn'}" data-leave="${id}" title="Not here right now">✕</button>`}
       </li>`;
     }).join('');
+
     benchList.querySelectorAll('[data-leave]').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
         const id = btn.getAttribute('data-leave');
+        if(!canManage(id)){
+          alert("You can only mark your own name not-present. An admin can do this for others.");
+          return;
+        }
         const name = state.players[id] ? state.players[id].name : 'Player';
         state = await loadState();
-        removeFromQueue(state, id);
+        markAbsent(state, id);
         await saveState(state);
-        showToast(`${name} left the queue`);
+        showToast(`${name} marked not present`);
         render(state);
       });
     });
+    benchList.querySelectorAll('[data-restore]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const id = btn.getAttribute('data-restore');
+        if(!canManage(id)){
+          alert("You can only restore your own name. An admin can do this for others.");
+          return;
+        }
+        const name = state.players[id] ? state.players[id].name : 'Player';
+        state = await loadState();
+        markPresent(state, id);
+        await saveState(state);
+        showToast(`${name} is back`);
+        render(state);
+      });
+    });
+  }
+
+  // history
+  const historyList = document.getElementById('historyList');
+  const log = (s.gameLog || []).slice().reverse();
+  document.getElementById('historyCount').textContent = `${log.length} game${log.length===1?'':'s'} played`;
+  if(log.length===0){
+    historyList.innerHTML = `<li class="empty-bench" style="list-style:none;">No games played yet</li>`;
+  } else {
+    historyList.innerHTML = log.map(g=>{
+      const time = new Date(g.ts).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+      const winnerNote = g.winner ? (g.winner==='A' ? ' · Team A won' : ' · Team B won') : '';
+      return `<li>
+        <div class="hist-top"><span class="hist-game">Game ${g.gameNumber}</span><span>${time}${winnerNote}</span></div>
+        <div class="hist-teams">
+          <span class="ta">${g.teamA.map(escapeHtml).join(', ')}</span>
+          <span class="vs">vs</span>
+          <span class="tb">${g.teamB.map(escapeHtml).join(', ')}</span>
+        </div>
+      </li>`;
+    }).join('');
   }
 }
 
@@ -446,10 +659,15 @@ function escapeHtml(str){
 
 async function onAction(e){
   const action = e.currentTarget.getAttribute('data-action');
+  if(!ensureUnlocked()) return;
   state = await loadState();
   if(action==='win-a') recordWinner(state, 'A');
   else if(action==='win-b') recordWinner(state, 'B');
   else if(action==='next') nextGame(state);
+  else if(action==='undo'){
+    const ok = undoLastGame(state);
+    if(!ok) return;
+  }
   await saveState(state);
   render(state);
 }
@@ -461,7 +679,26 @@ async function handleJoin(){
   const btn = document.getElementById('joinBtn');
   btn.disabled = true;
   state = await loadState();
-  addPlayer(state, name);
+
+  const isDup = Object.values(state.players).some(p => p.name.trim().toLowerCase() === name.toLowerCase());
+  if(isDup){
+    if(isUnlocked()){
+      const proceed = confirm(`"${name}" is already on the list tonight. Add another one anyway?`);
+      if(!proceed){
+        btn.disabled = false;
+        input.focus();
+        return;
+      }
+    } else {
+      alert(`"${name}" is already on the list tonight. Names need to be unique — try a last initial, or ask an admin if this is really a second person with the same name.`);
+      btn.disabled = false;
+      input.focus();
+      return;
+    }
+  }
+
+  const newId = addPlayer(state, name);
+  addMyId(newId);
   await saveState(state);
   input.value = '';
   btn.disabled = false;
@@ -474,7 +711,18 @@ document.getElementById('joinBtn').addEventListener('click', handleJoin);
 document.getElementById('nameInput').addEventListener('keydown', (e)=>{
   if(e.key==='Enter') handleJoin();
 });
+document.getElementById('adminBtn').addEventListener('click', ()=>{
+  if(isUnlocked()){
+    if(confirm('Lock admin controls on this device?')){
+      localStorage.removeItem(ADMIN_KEY);
+      updateAdminBtn();
+    }
+  } else {
+    requestUnlock();
+  }
+});
 document.getElementById('resetBtn').addEventListener('click', async ()=>{
+  if(!ensureUnlocked()) return;
   if(!confirm('Start a new night? This clears everyone on the list and the court.')) return;
   state = defaultState();
   await saveState(state);
@@ -500,6 +748,7 @@ async function poll(){
 }
 
 (async function init(){
+  updateAdminBtn();
   state = await loadState();
   render(state);
   if(hasFirebase){
