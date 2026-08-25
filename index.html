@@ -171,7 +171,7 @@
   </div>
 
   <div class="join">
-    <input id="nameInput" type="text" placeholder="Your name" maxlength="24" autocomplete="off">
+    <input id="nameInput" type="text" placeholder="Your first and last name" maxlength="24" autocomplete="off">
     <button id="joinBtn">Join</button>
   </div>
 
@@ -505,10 +505,14 @@ function playerName(s, id){
 
 function render(s){
   const sub = document.getElementById('subhead');
-  const totalIn = Object.keys(s.players).length;
-  sub.textContent = s.gameNumber===0
-    ? `waiting for ${Math.max(0,10-totalIn)} more to start`
-    : `${totalIn} on the list tonight`;
+  const signedUp = Object.keys(s.players).length;
+  const stillIn = Object.values(s.players).filter(p=>!p.absent).length;
+  if(s.gameNumber===0){
+    const needed = Math.max(0, 10 - stillIn);
+    sub.textContent = `${signedUp} signed up · ${stillIn} ready to play` + (needed>0 ? ` — need ${needed} more to start` : '');
+  } else {
+    sub.textContent = `${signedUp} signed up · ${stillIn} still ready to play`;
+  }
 
   // court
   const wrap = document.getElementById('courtWrap');
@@ -543,19 +547,24 @@ function render(s){
     actionHtml += `<button class="btn back" data-action="undo">↩ Back a game</button>`;
   }
 
+  const stintLabel = (slot) => {
+    if(slot.ids.length===0) return '';
+    return slot.stint===0 ? 'Playing 1st game' : 'Playing 2nd game';
+  };
+
   wrap.innerHTML = `
     <div class="court-row">
       <div class="team a">
         <div class="team-label">
           <span class="name">Team A</span>
-          <span class="streak">${s.slots.A.stint>=1 ? 'game '+(s.slots.A.stint+1)+' this stint' : ''}</span>
+          <span class="streak">${stintLabel(s.slots.A)}</span>
         </div>
         <ul class="roster">${rosterHtml(s.slots.A)}</ul>
       </div>
       <div class="team b">
         <div class="team-label">
           <span class="name">Team B</span>
-          <span class="streak">${s.slots.B.stint>=1 ? 'game '+(s.slots.B.stint+1)+' this stint' : ''}</span>
+          <span class="streak">${stintLabel(s.slots.B)}</span>
         </div>
         <ul class="roster">${rosterHtml(s.slots.B)}</ul>
       </div>
@@ -683,14 +692,14 @@ async function handleJoin(){
   const isDup = Object.values(state.players).some(p => p.name.trim().toLowerCase() === name.toLowerCase());
   if(isDup){
     if(isUnlocked()){
-      const proceed = confirm(`"${name}" is already on the list tonight. Add another one anyway?`);
+      const proceed = confirm(`That name is already added. Choose another name, but please don't add yourself twice.\n\nAdd "${name}" again anyway?`);
       if(!proceed){
         btn.disabled = false;
         input.focus();
         return;
       }
     } else {
-      alert(`"${name}" is already on the list tonight. Names need to be unique — try a last initial, or ask an admin if this is really a second person with the same name.`);
+      alert(`That name is already added. Choose another name, but please don't add yourself twice.`);
       btn.disabled = false;
       input.focus();
       return;
