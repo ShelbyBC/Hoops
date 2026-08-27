@@ -78,8 +78,8 @@
   .order-btn:disabled{opacity:0.2; cursor:default;}
 
   .court-heading{
-    font-family:'Teko',sans-serif; font-size:15px; letter-spacing:0.05em; text-transform:uppercase;
-    color:var(--gold); text-align:center; margin-bottom:12px;
+    font-family:'Teko',sans-serif; font-size:20px; letter-spacing:0.05em; text-transform:uppercase;
+    color:var(--gold); text-align:left; margin-bottom:12px;
   }
 
   .action{margin-top:14px;}
@@ -187,7 +187,7 @@
   </div>
 
   <div class="join">
-    <input id="nameInput" type="text" placeholder="Type first and last name - hit Join --&gt;" maxlength="24" autocomplete="off">
+    <input id="nameInput" type="text" placeholder="Type first &amp; last name - hit Join" maxlength="24" autocomplete="off">
     <button id="joinBtn">Join</button>
   </div>
 
@@ -206,6 +206,7 @@
   <ul class="bench-list hist-list" id="historyList"></ul>
 
   <div class="viewer-footer" id="viewerCount"></div>
+  <div class="viewer-footer" id="versionFooter"></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -233,6 +234,11 @@ function defaultState(){
 function uid(){
   return 'p' + Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-4);
 }
+
+// ---- config / version info ----
+// Update this line by hand any time you save a new version of this file, so
+// everyone can tell at a glance whether their browser has the latest copy.
+const SCRIPT_UPDATED = "August 27, 2026 1:46 PM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -894,6 +900,7 @@ async function poll(){
 
 (async function init(){
   updateAdminBtn();
+  document.getElementById('versionFooter').textContent = `Script last updated: ${SCRIPT_UPDATED}`;
   state = await loadState();
   render(state);
   if(hasFirebase){
