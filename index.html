@@ -158,6 +158,11 @@
   .hist-teams .ta{color:#e8867a;}
   .hist-teams .tb{color:#7fb9db;}
 
+  .viewer-footer{
+    text-align:center; font-size:11px; color:var(--muted); opacity:0.7;
+    margin-top:18px; padding-bottom:4px;
+  }
+
   .toast{
     position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
     background:var(--panel-2); border:1px solid var(--line); color:var(--chalk);
@@ -204,6 +209,8 @@
     <span id="historyCount">0 games played</span>
   </div>
   <ul class="bench-list hist-list" id="historyList"></ul>
+
+  <div class="viewer-footer" id="viewerCount"></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -282,9 +289,43 @@ const hasFirebase = firebaseConfig.apiKey !== "YOUR_API_KEY" && typeof firebase 
 const hasCloudStorage = (typeof window.storage !== 'undefined');
 
 let fbRef = null;
+let viewersRef = null;
 if(hasFirebase){
   firebase.initializeApp(firebaseConfig);
   fbRef = firebase.database().ref(STORAGE_KEY);
+  viewersRef = firebase.database().ref(STORAGE_KEY + '-viewers');
+}
+
+// ---- presence: "N active viewers in the last 5 minutes" ----
+// Each open tab checks in every 25s. Anyone with the page open counts
+// its own heartbeat against everyone else's to show a rough live count.
+const VIEWER_WINDOW_MS = 5 * 60 * 1000;
+let viewersData = {};
+let mySessionId = null;
+
+function startPresence(){
+  if(!hasFirebase || !viewersRef) return;
+  mySessionId = uid();
+  const myRef = viewersRef.child(mySessionId);
+  const beat = () => myRef.set(firebase.database.ServerValue.TIMESTAMP);
+  beat();
+  setInterval(beat, 25000);
+  myRef.onDisconnect().remove();
+
+  viewersRef.on('value', (snap)=>{
+    viewersData = snap.val() || {};
+    renderViewerCount();
+  });
+  // re-check every 15s even with no new writes, so stale tabs age out of the window
+  setInterval(renderViewerCount, 15000);
+}
+
+function renderViewerCount(){
+  const el = document.getElementById('viewerCount');
+  if(!el || !hasFirebase) return;
+  const now = Date.now();
+  const count = Object.values(viewersData).filter(ts => typeof ts === 'number' && (now - ts) <= VIEWER_WINDOW_MS).length;
+  el.textContent = count===1 ? '1 person active in the last 5 min' : `${count} people active in the last 5 min`;
 }
 
 // Firebase silently drops empty arrays/objects when saving, so a fresh read
@@ -870,6 +911,7 @@ async function poll(){
         render(state);
       }
     });
+    startPresence();
   } else {
     setInterval(poll, 2500);
   }
