@@ -77,15 +77,10 @@
   .order-btn:active{color:var(--gold); border-color:var(--gold);}
   .order-btn:disabled{opacity:0.2; cursor:default;}
 
-  .center-badge{
-    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
-    width:52px; height:52px; border-radius:50%;
-    background:var(--bg); border:2px solid var(--gold);
-    display:flex; align-items:center; justify-content:center; flex-direction:column;
-    z-index:2;
+  .court-heading{
+    font-family:'Teko',sans-serif; font-size:15px; letter-spacing:0.05em; text-transform:uppercase;
+    color:var(--gold); text-align:center; margin-bottom:12px;
   }
-  .center-badge .g{font-size:9px; color:var(--muted); letter-spacing:0.1em; text-transform:uppercase; margin-bottom:-3px;}
-  .center-badge .n{font-family:'Teko',sans-serif; font-size:24px; color:var(--gold); line-height:1;}
 
   .action{margin-top:14px;}
   .win-row{display:flex; gap:8px;}
@@ -192,7 +187,7 @@
   </div>
 
   <div class="join">
-    <input id="nameInput" type="text" placeholder="Your first and last name" maxlength="24" autocomplete="off">
+    <input id="nameInput" type="text" placeholder="Type first and last name - hit Join --&gt;" maxlength="24" autocomplete="off">
     <button id="joinBtn">Join</button>
   </div>
 
@@ -206,7 +201,7 @@
 
   <div class="bench-head" style="margin-top:20px;">
     <h2>History</h2>
-    <span id="historyCount">0 games played</span>
+    <span id="historyCount">0 games played tonight</span>
   </div>
   <ul class="bench-list hist-list" id="historyList"></ul>
 
@@ -576,7 +571,7 @@ function render(s){
     const needed = Math.max(0, 10 - stillIn);
     subLine2.textContent = `${stillIn} ready to play` + (needed>0 ? ` \u2014 need ${needed} more to start` : '');
   } else {
-    subLine2.textContent = `${stillIn} still ready to play`;
+    subLine2.textContent = `${stillIn} ready to play`;
   }
 
   // court
@@ -618,6 +613,7 @@ function render(s){
   };
 
   wrap.innerHTML = `
+    ${s.gameNumber>0 ? `<div class="court-heading">Currently on court &mdash; Game ${s.gameNumber}</div>` : ''}
     <div class="court-row">
       <div class="team a">
         <div class="team-label">
@@ -633,7 +629,6 @@ function render(s){
         </div>
         <ul class="roster">${rosterHtml(s.slots.B)}</ul>
       </div>
-      ${s.gameNumber>0 ? `<div class="center-badge"><span class="g">Game</span><span class="n">${s.gameNumber}</span></div>` : ''}
     </div>
     <div class="action">${actionHtml}</div>
   `;
@@ -754,7 +749,7 @@ function render(s){
   // history
   const historyList = document.getElementById('historyList');
   const log = (s.gameLog || []).slice().reverse();
-  document.getElementById('historyCount').textContent = `${log.length} game${log.length===1?'':'s'} played`;
+  document.getElementById('historyCount').textContent = `${log.length} game${log.length===1?'':'s'} played tonight`;
   if(log.length===0){
     historyList.innerHTML = `<li class="empty-bench" style="list-style:none;">No games played yet</li>`;
   } else {
