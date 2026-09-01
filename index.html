@@ -262,7 +262,7 @@ function uid(){
 // ---- config / version info ----
 // Update this line by hand any time you save a new version of this file, so
 // everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "September 1, 2026 2:46 PM EDT";
+const SCRIPT_UPDATED = "September 1, 2026 2:57 PM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -795,7 +795,6 @@ function render(s){
           <span class="roster-row-sub">${gms} gms</span>
           <button class="edit-btn" data-edit="${id}" title="Edit name">\u270E</button>
           <button class="toggle-btn avail" data-toggle="${id}" title="Not playing next game">\u2611</button>
-          <button class="delete-btn" data-delete="${id}" title="Remove completely">\u2715</button>
         </div>
       </li>`;
     }).join('');
