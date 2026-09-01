@@ -50,9 +50,9 @@
   .reset-btn:active{background:var(--panel-2);}
 
   /* court */
-  .court{position:relative; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:16px; margin-bottom:16px;}
-  .court-row{display:flex; align-items:stretch; gap:8px; position:relative;}
-  .team{flex:1; min-width:0; background:var(--panel-2); border-radius:12px; padding:12px 10px 14px; border-top:3px solid transparent;}
+  .court{position:relative; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:10px; margin-bottom:16px;}
+  .court-row{display:flex; align-items:stretch; gap:5px; position:relative;}
+  .team{flex:1; min-width:0; background:var(--panel-2); border-radius:12px; padding:10px 6px 12px; border-top:3px solid transparent;}
   .team.a{border-top-color:var(--red);}
   .team.b{border-top-color:var(--blue);}
   .team-label{display:flex; flex-direction:column; align-items:flex-start; gap:2px; margin-bottom:8px;}
@@ -61,22 +61,15 @@
   .team.b .name{color:#7fb9db;}
   .streak{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;}
   .roster{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:5px;}
-  .roster li{font-size:13.5px; color:var(--chalk); padding:5px 8px; background:rgba(255,255,255,0.03); border-radius:6px; display:flex; align-items:center; justify-content:space-between; gap:6px;}
+  .roster li{font-size:13.5px; color:var(--chalk); padding:5px 6px; background:rgba(255,255,255,0.03); border-radius:6px; display:flex; align-items:center; justify-content:space-between; gap:4px;}
   .roster li .rname{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;}
   .roster li .roster-actions{display:flex; align-items:center; gap:2px; flex-shrink:0;}
   .roster li.empty{color:var(--muted); font-style:italic; background:transparent; border:1px dashed var(--line); display:block;}
   .edit-btn{
-    background:none; border:1px solid var(--line); color:var(--muted); font-size:10px; letter-spacing:0.03em;
-    text-transform:uppercase; padding:3px 7px; border-radius:6px; cursor:pointer; flex-shrink:0;
+    background:none; border:1px solid var(--line); color:var(--muted); font-size:13px;
+    padding:2px 6px; border-radius:6px; cursor:pointer; flex-shrink:0; line-height:1;
   }
   .edit-btn:active{color:var(--gold); border-color:var(--gold);}
-  .order-group{display:flex; flex-direction:column; gap:2px; flex-shrink:0;}
-  .order-btn{
-    background:none; border:1px solid var(--line); color:var(--muted); font-size:8px; line-height:1;
-    padding:2px 5px; border-radius:4px; cursor:pointer;
-  }
-  .order-btn:active{color:var(--gold); border-color:var(--gold);}
-  .order-btn:disabled{opacity:0.2; cursor:default;}
 
   .court-heading{
     font-family:'Teko',sans-serif; font-size:20px; letter-spacing:0.05em; text-transform:uppercase;
@@ -260,7 +253,7 @@ function uid(){
 // ---- config / version info ----
 // Update this line by hand any time you save a new version of this file, so
 // everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "September 1, 2026 9:49 AM EDT";
+const SCRIPT_UPDATED = "September 1, 2026 10:11 AM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -431,9 +424,11 @@ function shuffle(arr){
 }
 
 // pull players from the front of the queue into a slot, respecting availability
-// and skipping anyone currently marked absent (struck out on the bench)
+// and skipping anyone currently marked absent (struck out on the bench).
+// Only tops up games already in progress \u2014 the very first game now only
+// starts when an admin taps "Start First Game", not automatically at 10.
 function tryFillSlots(s){
-  const bothEmpty = s.slots.A.ids.length===0 && s.slots.B.ids.length===0;
+  if(s.gameNumber === 0) return;
 
   function takeActive(n){
     const activeIds = s.queue.filter(id => s.players[id] && !s.players[id].absent);
@@ -442,20 +437,6 @@ function tryFillSlots(s){
     const chosenSet = new Set(chosen);
     s.queue = s.queue.filter(id => !chosenSet.has(id));
     return chosen;
-  }
-
-  if(bothEmpty && s.gameNumber===0){
-    // initial fill: first 10 active randomized into two teams of 5
-    const first10 = takeActive(10);
-    if(first10){
-      const shuffled = shuffle(first10);
-      s.slots.A = { ids: shuffled.slice(0,5), stint: 0 };
-      s.slots.B = { ids: shuffled.slice(5,10), stint: 0 };
-      s.gameNumber = 1;
-      s.needsWinner = true;
-      stampGameStartIfReady(s);
-    }
-    return;
   }
 
   // top up any slot short of 5 \u2014 whether it's completely empty (a fresh
@@ -474,6 +455,24 @@ function tryFillSlots(s){
     }
   });
   stampGameStartIfReady(s);
+}
+
+// manually drafts the first 10 active players into two random teams of 5 and
+// kicks off Game 1. Returns false (no-op) if there aren't 10 active yet.
+function startFirstGame(s){
+  if(s.gameNumber !== 0) return false;
+  const activeIds = s.queue.filter(id => s.players[id] && !s.players[id].absent);
+  if(activeIds.length < 10) return false;
+  const chosen = activeIds.slice(0, 10);
+  const chosenSet = new Set(chosen);
+  s.queue = s.queue.filter(id => !chosenSet.has(id));
+  const shuffled = shuffle(chosen);
+  s.slots.A = { ids: shuffled.slice(0,5), stint: 0 };
+  s.slots.B = { ids: shuffled.slice(5,10), stint: 0 };
+  s.gameNumber = 1;
+  s.needsWinner = true;
+  stampGameStartIfReady(s);
+  return true;
 }
 
 // records when the CURRENT game's clock should start: the first moment both
@@ -774,15 +773,18 @@ function render(s){
       <span class="rname">${escapeHtml(playerName(s,id))}</span>
       <div class="roster-actions">
         <button class="toggle-btn avail" data-toggle="${id}" title="Not playing next game">\u2611</button>
-        <button class="edit-btn" data-edit="${id}" title="Edit name">Edit</button>
-        <button class="delete-btn" data-delete="${id}" title="Remove completely">\u2715</button>
+        <button class="edit-btn" data-edit="${id}" title="Edit name">\u270E</button>
       </div>
     </li>`).join('');
   };
 
   let actionHtml = '';
   if(s.gameNumber===0){
-    actionHtml = `<div class="waiting-msg">Court starts once 10 people have joined. First 10 get randomized into two teams.</div>`;
+    if(stillIn >= 10){
+      actionHtml = `<button class="btn next" data-action="start-first-game">Start First Game</button>`;
+    } else {
+      actionHtml = `<div class="waiting-msg">Waiting on ${10 - stillIn} more to join before the first game can start.</div>`;
+    }
   } else if(!bothFull){
     const need = (5-s.slots.A.ids.length) + (5-s.slots.B.ids.length);
     actionHtml = `<div class="waiting-msg">Waiting on ${need} more from the bench to fill both teams.</div>`;
@@ -887,38 +889,12 @@ function render(s){
         <div class="bname ${isAbsent?'struck':''}">${escapeHtml(p.name)}</div>
         <span class="games-away ${isNext?'soon':''}">${isAbsent ? 'Not playing' : gamesAwayLabel(activePos)}</span>
         <div class="gcount">${p.totalGames} gm${p.totalGames===1?'':'s'}</div>
-        ${isAbsent ? '' : `<div class="order-group">
-          <button class="order-btn" data-up="${id}" ${isFirst?'disabled':''} title="Move up">\u25B2</button>
-          <button class="order-btn" data-down="${id}" ${isLast?'disabled':''} title="Move down">\u25BC</button>
-        </div>`}
-        <button class="edit-btn" data-edit="${id}" title="Edit name">Edit</button>
+        <button class="edit-btn" data-edit="${id}" title="Edit name">\u270E</button>
         <button class="toggle-btn ${isAbsent?'unavail':'avail'}" data-toggle="${id}" title="${isAbsent?'Mark present':'Mark not present'}">${isAbsent?'\u2610':'\u2611'}</button>
         <button class="delete-btn" data-delete="${id}" title="Remove completely">\u2715</button>
       </li>`;
     }).join('');
 
-    benchList.querySelectorAll('[data-up]').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        if(btn.disabled) return;
-        if(!ensureUnlocked()) return;
-        const id = btn.getAttribute('data-up');
-        state = await loadState();
-        moveActivePlayer(state, id, -1);
-        await saveState(state);
-        render(state);
-      });
-    });
-    benchList.querySelectorAll('[data-down]').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        if(btn.disabled) return;
-        if(!ensureUnlocked()) return;
-        const id = btn.getAttribute('data-down');
-        state = await loadState();
-        moveActivePlayer(state, id, 1);
-        await saveState(state);
-        render(state);
-      });
-    });
     benchList.querySelectorAll('[data-toggle]').forEach(btn=>{
       btn.addEventListener('click', ()=> handleToggleAvailability(btn.getAttribute('data-toggle')));
     });
@@ -967,7 +943,11 @@ async function onAction(e){
   const action = e.currentTarget.getAttribute('data-action');
   if(!ensureUnlocked()) return;
   state = await loadState();
-  if(action==='win-a') recordWinner(state, 'A');
+  if(action==='start-first-game'){
+    const ok = startFirstGame(state);
+    if(!ok) { render(state); return; }
+  }
+  else if(action==='win-a') recordWinner(state, 'A');
   else if(action==='win-b') recordWinner(state, 'B');
   else if(action==='next') nextGame(state);
   else if(action==='undo'){
