@@ -62,10 +62,12 @@
   .streak{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;}
   .roster{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:5px;}
   .roster li{
-    font-size:13.5px; color:var(--chalk); padding:5px 6px; border-radius:6px; display:flex;
-    align-items:center; justify-content:space-between; gap:4px;
+    font-size:13.5px; color:var(--chalk); padding:5px 6px 4px; border-radius:6px; display:flex;
+    flex-direction:column; gap:1px;
     background:rgba(76,209,122,0.14); border:1px solid rgba(76,209,122,0.45);
   }
+  .roster li .roster-row-top{display:flex; align-items:center; justify-content:space-between; gap:4px;}
+  .roster li .roster-row-sub{font-size:10px; color:var(--muted); padding-left:2px;}
   .roster li .rname{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;}
   .roster li .roster-actions{display:flex; align-items:center; gap:2px; flex-shrink:0;}
   .roster li.empty{color:var(--muted); font-style:italic; background:transparent; border:1px dashed var(--line); display:block;}
@@ -113,7 +115,7 @@
 
   /* bench */
   .bench-head{display:flex; align-items:baseline; justify-content:space-between; margin:4px 2px 8px;}
-  .bench-head h2{font-family:'Teko',sans-serif; font-size:18px; letter-spacing:0.05em; text-transform:uppercase; margin:0; color:var(--muted);}
+  .bench-head h2{font-family:'Teko',sans-serif; font-size:18px; letter-spacing:0.05em; text-transform:uppercase; margin:0; color:var(--chalk);}
   .bench-head h2 .whos-next{
     font-family:'Inter',sans-serif; font-size:12px; letter-spacing:0; text-transform:none;
     color:#6fc0e8; font-weight:600; margin-left:4px;
@@ -164,7 +166,7 @@
   }
   .admin-on{color:var(--gold) !important; border-color:var(--gold) !important;}
 
-  .hist-list{max-height:300px; overflow-y:auto;}
+  .hist-list{max-height:none;}
   .hist-list li{flex-direction:column; align-items:stretch; gap:4px;}
   .hist-top{display:flex; justify-content:space-between; font-size:11px; color:var(--muted); letter-spacing:0.03em;}
   .hist-top .hist-game{font-family:'Teko',sans-serif; font-size:14px; color:var(--gold); letter-spacing:0.04em; text-transform:uppercase;}
@@ -207,7 +209,7 @@
   </div>
 
   <div class="join">
-    <input id="nameInput" type="text" placeholder="Type first &amp; last name - hit Join" maxlength="24" autocomplete="off">
+    <input id="nameInput" type="text" placeholder="Type in your name then hit join" maxlength="24" autocomplete="off">
     <button id="joinBtn">Join</button>
   </div>
 
@@ -261,7 +263,7 @@ function uid(){
 // ---- config / version info ----
 // Update this line by hand any time you save a new version of this file, so
 // everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "September 1, 2026 1:18 PM EDT";
+const SCRIPT_UPDATED = "September 1, 2026 2:26 PM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -637,7 +639,9 @@ function playerNameSafe(s, id){
   return s.players[id] ? s.players[id].name : '\u2014';
 }
 
-// saved right before any game-advancing action, so "Back a game" can restore it
+// saved right before any game-advancing action, so "Back a game" can restore it.
+// Capped generously (150 steps) so a full night's worth of games can still be
+// undone all the way back to the very first draft, not just the last few.
 function pushUndoSnapshot(s){
   if(!s.undoStack) s.undoStack = [];
   s.undoStack.push({
@@ -650,7 +654,7 @@ function pushUndoSnapshot(s){
     gameStartedAt: s.gameStartedAt || null,
     gameStartedForGameNumber: s.gameStartedForGameNumber || 0,
   });
-  if(s.undoStack.length > 8) s.undoStack.shift();
+  if(s.undoStack.length > 150) s.undoStack.shift();
 }
 
 function logGame(s, gameNumber, teamAIds, teamBIds, winnerKey){
@@ -777,11 +781,18 @@ function render(s){
     if(slot.ids.length===0){
       return '<li class="empty">waiting for players</li>';
     }
-    return slot.ids.map(id=>`<li>
-      <button class="swap-btn ${swapSelectionId===id?'selected':''}" data-swap="${id}" title="Select to swap">\u2194</button>
-      <span class="rname">${escapeHtml(playerName(s,id))}</span>
-      <button class="edit-btn" data-edit="${id}" title="Edit name">\u270E</button>
-    </li>`).join('');
+    return slot.ids.map(id=>{
+      const p = s.players[id];
+      const gms = p ? p.totalGames : 0;
+      return `<li>
+        <div class="roster-row-top">
+          <button class="swap-btn ${swapSelectionId===id?'selected':''}" data-swap="${id}" title="Select to swap">\u2194</button>
+          <span class="rname">${escapeHtml(playerName(s,id))}</span>
+          <button class="edit-btn" data-edit="${id}" title="Edit name">\u270E</button>
+        </div>
+        <div class="roster-row-sub">${gms} game${gms===1?'':'s'} played</div>
+      </li>`;
+    }).join('');
   };
 
   let actionHtml = '';
