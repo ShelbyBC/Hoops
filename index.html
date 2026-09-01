@@ -142,6 +142,13 @@
     padding:2px 6px; flex-shrink:0; opacity:0.75;
   }
   .delete-btn:active{opacity:1;}
+  .swap-btn{
+    background:none; border:1px solid var(--line); color:var(--muted); font-size:13px; line-height:1;
+    padding:3px 6px; border-radius:6px; cursor:pointer; flex-shrink:0;
+  }
+  .swap-btn.selected{
+    border-color:var(--gold); color:var(--gold); background:rgba(232,179,76,0.15);
+  }
   .empty-bench{color:var(--muted); font-size:13px; text-align:center; padding:16px 0;}
 
   .bench-list li.next-up{border-color:#3e8a5c; background:rgba(76,175,110,0.10);}
@@ -227,6 +234,7 @@
 const STORAGE_KEY = 'pickup-state-v1';
 let state = null;
 let saving = false;
+let swapSelectionId = null; // id of the on-court player currently armed for a team swap, if any
 
 function defaultState(){
   return {
@@ -252,7 +260,7 @@ function uid(){
 // ---- config / version info ----
 // Update this line by hand any time you save a new version of this file, so
 // everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "September 1, 2026 8:54 AM EDT";
+const SCRIPT_UPDATED = "September 1, 2026 9:12 AM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -514,7 +522,11 @@ function toggleAvailability(s, id){
   } else {
     const wasOnCourt = removeFromCourtIfPresent(s, id);
     if(wasOnCourt){
-      s.queue.push(id);
+      // knocked out of the active 10 -> straight to the top of the bench, not
+      // the back of the line, so if they come back available they're first
+      // in line for the next open seat rather than stuck behind everyone
+      // who backfilled while they were out
+      s.queue.unshift(id);
     }
     player.absent = true;
     tryFillSlots(s);
@@ -529,6 +541,25 @@ function deletePlayerCompletely(s, id){
   s.queue = s.queue.filter(x => x !== id);
   delete s.players[id];
   tryFillSlots(s);
+}
+
+// which court slot (if any) currently holds this player
+function teamContaining(s, id){
+  if(s.slots.A.ids.includes(id)) return 'A';
+  if(s.slots.B.ids.includes(id)) return 'B';
+  return null;
+}
+
+// trades two on-court players between Team A and Team B in place
+function swapCourtPlayers(s, id1, id2){
+  const team1 = teamContaining(s, id1);
+  const team2 = teamContaining(s, id2);
+  if(!team1 || !team2 || team1 === team2) return false;
+  const idx1 = s.slots[team1].ids.indexOf(id1);
+  const idx2 = s.slots[team2].ids.indexOf(id2);
+  s.slots[team1].ids[idx1] = id2;
+  s.slots[team2].ids[idx2] = id1;
+  return true;
 }
 
 // swap an active bench player one spot earlier (direction -1) or later (direction +1)
@@ -685,6 +716,7 @@ function render(s){
       return '<li class="empty">waiting for players</li>';
     }
     return slot.ids.map(id=>`<li>
+      <button class="swap-btn ${swapSelectionId===id?'selected':''}" data-swap="${id}" title="Select to swap teams">\u2194</button>
       <span class="rname">${escapeHtml(playerName(s,id))}</span>
       <div class="roster-actions">
         <button class="toggle-btn avail" data-toggle="${id}" title="Not playing next game">\u2611</button>
@@ -751,6 +783,9 @@ function render(s){
   });
   wrap.querySelectorAll('[data-delete]').forEach(btn=>{
     btn.addEventListener('click', ()=> handleDeletePlayer(btn.getAttribute('data-delete')));
+  });
+  wrap.querySelectorAll('[data-swap]').forEach(btn=>{
+    btn.addEventListener('click', ()=> handleArrowClick(btn.getAttribute('data-swap')));
   });
 
   // bench
@@ -923,6 +958,59 @@ async function handleToggleAvailability(id){
   toggleAvailability(state, id);
   await saveState(state);
   showToast(wasAbsent ? `${player.name} is back` : `${player.name} marked not present`);
+  render(state);
+}
+
+// arrow next to each on-court name: first tap arms a player for a swap,
+// tapping a second arrow on the OTHER team confirms and swaps them
+async function handleArrowClick(id){
+  if(!ensureUnlocked()) return;
+
+  if(swapSelectionId === id){
+    // tapping the same arrow again cancels the selection
+    swapSelectionId = null;
+    render(state);
+    return;
+  }
+
+  if(swapSelectionId === null){
+    swapSelectionId = id;
+    render(state);
+    return;
+  }
+
+  const firstId = swapSelectionId;
+  const secondId = id;
+  swapSelectionId = null;
+
+  state = await loadState();
+  const teamFirst = teamContaining(state, firstId);
+  const teamSecond = teamContaining(state, secondId);
+
+  if(!teamFirst || !teamSecond){
+    alert('One of those players is no longer on the court.');
+    render(state);
+    return;
+  }
+  if(teamFirst === teamSecond){
+    // picked two people from the same team \u2014 just move the selection
+    // to whichever one was tapped most recently instead of erroring out
+    swapSelectionId = secondId;
+    render(state);
+    return;
+  }
+
+  const nameFirst = state.players[firstId] ? state.players[firstId].name : 'Player';
+  const nameSecond = state.players[secondId] ? state.players[secondId].name : 'Player';
+  const confirmed = confirm(`Swap ${nameFirst} and ${nameSecond} between teams?`);
+  if(!confirmed){
+    render(state);
+    return;
+  }
+
+  swapCourtPlayers(state, firstId, secondId);
+  await saveState(state);
+  showToast(`Swapped ${nameFirst} and ${nameSecond}`);
   render(state);
 }
 
