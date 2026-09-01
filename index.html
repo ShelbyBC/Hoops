@@ -260,7 +260,7 @@ function uid(){
 // ---- config / version info ----
 // Update this line by hand any time you save a new version of this file, so
 // everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "September 1, 2026 9:12 AM EDT";
+const SCRIPT_UPDATED = "September 1, 2026 9:49 AM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -562,6 +562,44 @@ function swapCourtPlayers(s, id1, id2){
   return true;
 }
 
+// swaps any two players, wherever they currently are: both on court (trades
+// teams), both on the bench (trades line position), or one of each
+// (substitutes the bench player onto the court in the other's place)
+function swapPlayers(s, id1, id2){
+  const team1 = teamContaining(s, id1);
+  const team2 = teamContaining(s, id2);
+
+  if(team1 && team2){
+    if(team1 === team2) return false;
+    return swapCourtPlayers(s, id1, id2);
+  }
+
+  if(team1 && !team2){
+    const idx2 = s.queue.indexOf(id2);
+    if(idx2 === -1) return false;
+    const slotIdx = s.slots[team1].ids.indexOf(id1);
+    s.slots[team1].ids[slotIdx] = id2;
+    s.queue[idx2] = id1;
+    return true;
+  }
+
+  if(!team1 && team2){
+    const idx1 = s.queue.indexOf(id1);
+    if(idx1 === -1) return false;
+    const slotIdx = s.slots[team2].ids.indexOf(id2);
+    s.slots[team2].ids[slotIdx] = id1;
+    s.queue[idx1] = id2;
+    return true;
+  }
+
+  const idx1 = s.queue.indexOf(id1);
+  const idx2 = s.queue.indexOf(id2);
+  if(idx1 === -1 || idx2 === -1) return false;
+  s.queue[idx1] = id2;
+  s.queue[idx2] = id1;
+  return true;
+}
+
 // swap an active bench player one spot earlier (direction -1) or later (direction +1)
 // among other active players, leaving absent players' raw positions untouched
 function moveActivePlayer(s, id, direction){
@@ -628,6 +666,22 @@ function undoLastGame(s){
   // silently dropped on the way back \u2014 run it through the same repair
   // normalizeState() already does for the live state.
   const restored = normalizeState(snap);
+
+  // anyone who joined AFTER this snapshot was taken shouldn't be erased by
+  // going back in time \u2014 fold them back onto the bench so everybody who
+  // signed up stays on the list, even for games they weren't around for yet
+  const currentPlayers = s.players || {};
+  Object.keys(currentPlayers).forEach(id=>{
+    if(!restored.players[id]){
+      restored.players[id] = currentPlayers[id];
+      const alreadyPlaced = restored.queue.includes(id) ||
+        restored.slots.A.ids.includes(id) || restored.slots.B.ids.includes(id);
+      if(!alreadyPlaced){
+        restored.queue.push(id);
+      }
+    }
+  });
+
   s.players = restored.players;
   s.queue = restored.queue;
   s.slots = restored.slots;
@@ -716,7 +770,7 @@ function render(s){
       return '<li class="empty">waiting for players</li>';
     }
     return slot.ids.map(id=>`<li>
-      <button class="swap-btn ${swapSelectionId===id?'selected':''}" data-swap="${id}" title="Select to swap teams">\u2194</button>
+      <button class="swap-btn ${swapSelectionId===id?'selected':''}" data-swap="${id}" title="Select to swap">\u2194</button>
       <span class="rname">${escapeHtml(playerName(s,id))}</span>
       <div class="roster-actions">
         <button class="toggle-btn avail" data-toggle="${id}" title="Not playing next game">\u2611</button>
@@ -829,6 +883,7 @@ function render(s){
       }
       return `<li class="${isAbsent?'absent':''} ${isNext?'next-up':''}">
         <div class="pos">${posLabel}</div>
+        <button class="swap-btn ${swapSelectionId===id?'selected':''}" data-swap="${id}" title="Select to swap">\u2194</button>
         <div class="bname ${isAbsent?'struck':''}">${escapeHtml(p.name)}</div>
         <span class="games-away ${isNext?'soon':''}">${isAbsent ? 'Not playing' : gamesAwayLabel(activePos)}</span>
         <div class="gcount">${p.totalGames} gm${p.totalGames===1?'':'s'}</div>
@@ -872,6 +927,9 @@ function render(s){
     });
     benchList.querySelectorAll('[data-edit]').forEach(btn=>{
       btn.addEventListener('click', ()=> handleEditName(btn.getAttribute('data-edit')));
+    });
+    benchList.querySelectorAll('[data-swap]').forEach(btn=>{
+      btn.addEventListener('click', ()=> handleArrowClick(btn.getAttribute('data-swap')));
     });
   }
 
@@ -961,8 +1019,10 @@ async function handleToggleAvailability(id){
   render(state);
 }
 
-// arrow next to each on-court name: first tap arms a player for a swap,
-// tapping a second arrow on the OTHER team confirms and swaps them
+// arrow next to every name (bench or on-court): first tap arms a player for a
+// swap, tapping a second arrow confirms and swaps them \u2014 trading teams if
+// both are on court, substituting if one's on the bench, or just trading line
+// position if both are on the bench
 async function handleArrowClick(id){
   if(!ensureUnlocked()) return;
 
@@ -984,31 +1044,47 @@ async function handleArrowClick(id){
   swapSelectionId = null;
 
   state = await loadState();
-  const teamFirst = teamContaining(state, firstId);
-  const teamSecond = teamContaining(state, secondId);
 
-  if(!teamFirst || !teamSecond){
-    alert('One of those players is no longer on the court.');
+  if(!state.players[firstId] || !state.players[secondId]){
+    alert('One of those players is no longer on the list.');
     render(state);
     return;
   }
-  if(teamFirst === teamSecond){
-    // picked two people from the same team \u2014 just move the selection
-    // to whichever one was tapped most recently instead of erroring out
+
+  const teamFirst = teamContaining(state, firstId);
+  const teamSecond = teamContaining(state, secondId);
+
+  if(teamFirst && teamSecond && teamFirst === teamSecond){
+    // picked two people from the same on-court team \u2014 just move the
+    // selection to whichever one was tapped most recently instead of erroring out
     swapSelectionId = secondId;
     render(state);
     return;
   }
 
-  const nameFirst = state.players[firstId] ? state.players[firstId].name : 'Player';
-  const nameSecond = state.players[secondId] ? state.players[secondId].name : 'Player';
-  const confirmed = confirm(`Swap ${nameFirst} and ${nameSecond} between teams?`);
+  // don't let an unavailable bench player get substituted straight onto the court
+  const bringingInAbsent =
+    (teamFirst && !teamSecond && state.players[secondId].absent) ||
+    (teamSecond && !teamFirst && state.players[firstId].absent);
+  if(bringingInAbsent){
+    alert('That player is marked not present \u2014 mark them available first.');
+    render(state);
+    return;
+  }
+
+  const nameFirst = state.players[firstId].name;
+  const nameSecond = state.players[secondId].name;
+  const confirmed = confirm(`Swap ${nameFirst} and ${nameSecond}?`);
   if(!confirmed){
     render(state);
     return;
   }
 
-  swapCourtPlayers(state, firstId, secondId);
+  const ok = swapPlayers(state, firstId, secondId);
+  if(!ok){
+    render(state);
+    return;
+  }
   await saveState(state);
   showToast(`Swapped ${nameFirst} and ${nameSecond}`);
   render(state);
