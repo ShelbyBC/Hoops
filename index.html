@@ -63,6 +63,7 @@
   .roster{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:5px;}
   .roster li{font-size:13.5px; color:var(--chalk); padding:5px 8px; background:rgba(255,255,255,0.03); border-radius:6px; display:flex; align-items:center; justify-content:space-between; gap:6px;}
   .roster li .rname{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;}
+  .roster li .roster-actions{display:flex; align-items:center; gap:2px; flex-shrink:0;}
   .roster li.empty{color:var(--muted); font-style:italic; background:transparent; border:1px dashed var(--line); display:block;}
   .edit-btn{
     background:none; border:1px solid var(--line); color:var(--muted); font-size:10px; letter-spacing:0.03em;
@@ -80,6 +81,11 @@
   .court-heading{
     font-family:'Teko',sans-serif; font-size:20px; letter-spacing:0.05em; text-transform:uppercase;
     color:var(--gold); text-align:left; margin-bottom:12px;
+  }
+  .game-timer{
+    font-family:'Inter',sans-serif; font-size:13px; letter-spacing:0; text-transform:none;
+    color:var(--chalk); background:var(--panel-2); border:1px solid var(--line);
+    border-radius:6px; padding:2px 8px; margin-left:6px; font-variant-numeric:tabular-nums;
   }
 
   .action{margin-top:14px;}
@@ -124,12 +130,18 @@
   .bname{flex:1; min-width:0; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .bname.struck{text-decoration:line-through; color:var(--muted);}
   .gcount{font-size:11px; color:var(--muted); flex-shrink:0;}
-  .leave-btn{
-    background:none; border:none; color:var(--muted); font-size:18px; line-height:1; cursor:pointer; padding:2px 6px; flex-shrink:0;
+  .toggle-btn{
+    background:none; border:none; font-size:17px; line-height:1; cursor:pointer; padding:2px 6px; flex-shrink:0;
   }
-  .leave-btn:active{color:var(--red);}
-  .restore-btn{color:#4caf6e;}
-  .restore-btn:active{color:#6fd18f;}
+  .toggle-btn.avail{color:#4caf6e;}
+  .toggle-btn.avail:active{color:#6fd18f;}
+  .toggle-btn.unavail{color:var(--muted); opacity:0.55;}
+  .toggle-btn.unavail:active{color:var(--chalk); opacity:1;}
+  .delete-btn{
+    background:none; border:none; color:var(--red); font-size:15px; line-height:1; cursor:pointer;
+    padding:2px 6px; flex-shrink:0; opacity:0.75;
+  }
+  .delete-btn:active{opacity:1;}
   .empty-bench{color:var(--muted); font-size:13px; text-align:center; padding:16px 0;}
 
   .bench-list li.next-up{border-color:#3e8a5c; background:rgba(76,175,110,0.10);}
@@ -228,6 +240,8 @@ function defaultState(){
     needsWinner: false,   // true only while game 1's result is pending
     gameLog: [],           // finalized games: {gameNumber, teamA:[names], teamB:[names], winner, ts}
     undoStack: [],          // snapshots to revert to if "Back a game" is used
+    gameStartedAt: null,          // timestamp the current game's teams became full 5v5
+    gameStartedForGameNumber: 0,  // which gameNumber that timestamp belongs to
   };
 }
 
@@ -238,7 +252,7 @@ function uid(){
 // ---- config / version info ----
 // Update this line by hand any time you save a new version of this file, so
 // everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "August 27, 2026 1:46 PM EDT";
+const SCRIPT_UPDATED = "September 1, 2026 8:54 AM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -329,6 +343,21 @@ function renderViewerCount(){
   el.textContent = count===1 ? '1 person active in the last 5 min' : `${count} people active in the last 5 min`;
 }
 
+// ticks every second so the current-game clock keeps running without
+// waiting on a full re-render or a Firebase update from someone else
+function updateGameTimer(){
+  const el = document.getElementById('gameTimer');
+  if(!el) return;
+  if(!state || !state.gameNumber || !state.gameStartedAt){
+    el.textContent = '0:00';
+    return;
+  }
+  const elapsedSec = Math.max(0, Math.floor((Date.now() - state.gameStartedAt) / 1000));
+  const mm = Math.floor(elapsedSec / 60);
+  const ss = elapsedSec % 60;
+  el.textContent = `${mm}:${ss < 10 ? '0' : ''}${ss}`;
+}
+
 // Firebase silently drops empty arrays/objects when saving, so a fresh read
 // back can be missing keys entirely \u2014 fill them back in with safe defaults.
 function normalizeState(val){
@@ -344,6 +373,8 @@ function normalizeState(val){
     needsWinner: !!val.needsWinner,
     gameLog: val.gameLog || [],
     undoStack: val.undoStack || [],
+    gameStartedAt: val.gameStartedAt || null,
+    gameStartedForGameNumber: val.gameStartedForGameNumber || 0,
   };
 }
 
@@ -414,20 +445,38 @@ function tryFillSlots(s){
       s.slots.B = { ids: shuffled.slice(5,10), stint: 0 };
       s.gameNumber = 1;
       s.needsWinner = true;
+      stampGameStartIfReady(s);
     }
     return;
   }
 
+  // top up any slot short of 5 \u2014 whether it's completely empty (a fresh
+  // team) or just missing one seat (someone was pulled off mid-stint), so a
+  // single removal doesn't strand the rest of that team
   ['A','B'].forEach(k=>{
     const slot = s.slots[k];
-    if(slot.ids.length===0){
-      const five = takeActive(5);
-      if(five){
-        slot.ids = five;
-        slot.stint = 0;
+    const missing = 5 - slot.ids.length;
+    if(missing > 0){
+      const wasEmpty = slot.ids.length === 0;
+      const extra = takeActive(missing);
+      if(extra){
+        slot.ids = slot.ids.concat(extra);
+        if(wasEmpty) slot.stint = 0;
       }
     }
   });
+  stampGameStartIfReady(s);
+}
+
+// records when the CURRENT game's clock should start: the first moment both
+// teams are a full 5v5 for this particular gameNumber. Only stamps once per
+// gameNumber, so incidental tryFillSlots calls (a reorder, a late join that
+// doesn't change either team) don't reset the clock.
+function stampGameStartIfReady(s){
+  if(s.gameNumber > 0 && s.slots.A.ids.length===5 && s.slots.B.ids.length===5 && s.gameStartedForGameNumber !== s.gameNumber){
+    s.gameStartedAt = Date.now();
+    s.gameStartedForGameNumber = s.gameNumber;
+  }
 }
 
 function addPlayer(s, name){
@@ -438,12 +487,47 @@ function addPlayer(s, name){
   return id;
 }
 
-function markAbsent(s, id){
-  if(s.players[id]) s.players[id].absent = true;
+// removes id from whichever court slot holds it, if any; returns true if it did
+function removeFromCourtIfPresent(s, id){
+  let removed = false;
+  ['A','B'].forEach(k=>{
+    const slot = s.slots[k];
+    const idx = slot.ids.indexOf(id);
+    if(idx !== -1){
+      slot.ids.splice(idx, 1);
+      removed = true;
+    }
+  });
+  return removed;
 }
 
-function markPresent(s, id){
-  if(s.players[id]) s.players[id].absent = false;
+// single checkmark toggle used everywhere (bench or on-court): flips someone
+// between available/unavailable. If they're currently on court and get marked
+// unavailable, they're pulled off immediately and the seat is backfilled from
+// the bench, rather than forcing them to finish out the team's next game.
+function toggleAvailability(s, id){
+  const player = s.players[id];
+  if(!player) return;
+  if(player.absent){
+    player.absent = false;
+    tryFillSlots(s);
+  } else {
+    const wasOnCourt = removeFromCourtIfPresent(s, id);
+    if(wasOnCourt){
+      s.queue.push(id);
+    }
+    player.absent = true;
+    tryFillSlots(s);
+  }
+}
+
+// fully removes a player from the night \u2014 court, bench, and history-name
+// lookups going forward. Distinct from toggling absent, which just benches
+// them but keeps their spot in line.
+function deletePlayerCompletely(s, id){
+  removeFromCourtIfPresent(s, id);
+  s.queue = s.queue.filter(x => x !== id);
+  delete s.players[id];
   tryFillSlots(s);
 }
 
@@ -486,6 +570,8 @@ function pushUndoSnapshot(s){
     gameNumber: s.gameNumber,
     needsWinner: s.needsWinner,
     gameLog: (s.gameLog || []).slice(),
+    gameStartedAt: s.gameStartedAt || null,
+    gameStartedForGameNumber: s.gameStartedForGameNumber || 0,
   });
   if(s.undoStack.length > 8) s.undoStack.shift();
 }
@@ -505,12 +591,20 @@ function logGame(s, gameNumber, teamAIds, teamBIds, winnerKey){
 function undoLastGame(s){
   if(!s.undoStack || s.undoStack.length===0) return false;
   const snap = s.undoStack.pop();
-  s.players = snap.players;
-  s.queue = snap.queue;
-  s.slots = snap.slots;
-  s.gameNumber = snap.gameNumber;
-  s.needsWinner = snap.needsWinner;
-  s.gameLog = snap.gameLog;
+  // snapshots go through Firebase saves just like top-level state, so any
+  // field that was an empty array/object at capture time (very likely for
+  // the very first snapshot, right when Game 1's teams are drafted) can get
+  // silently dropped on the way back \u2014 run it through the same repair
+  // normalizeState() already does for the live state.
+  const restored = normalizeState(snap);
+  s.players = restored.players;
+  s.queue = restored.queue;
+  s.slots = restored.slots;
+  s.gameNumber = restored.gameNumber;
+  s.needsWinner = restored.needsWinner;
+  s.gameLog = restored.gameLog;
+  s.gameStartedAt = restored.gameStartedAt;
+  s.gameStartedForGameNumber = restored.gameStartedForGameNumber;
   return true;
 }
 
@@ -590,7 +684,14 @@ function render(s){
     if(slot.ids.length===0){
       return '<li class="empty">waiting for players</li>';
     }
-    return slot.ids.map(id=>`<li><span class="rname">${escapeHtml(playerName(s,id))}</span><button class="edit-btn" data-edit="${id}" title="Edit name">Edit</button></li>`).join('');
+    return slot.ids.map(id=>`<li>
+      <span class="rname">${escapeHtml(playerName(s,id))}</span>
+      <div class="roster-actions">
+        <button class="toggle-btn avail" data-toggle="${id}" title="Not playing next game">\u2611</button>
+        <button class="edit-btn" data-edit="${id}" title="Edit name">Edit</button>
+        <button class="delete-btn" data-delete="${id}" title="Remove completely">\u2715</button>
+      </div>
+    </li>`).join('');
   };
 
   let actionHtml = '';
@@ -619,7 +720,7 @@ function render(s){
   };
 
   wrap.innerHTML = `
-    ${s.gameNumber>0 ? `<div class="court-heading">Currently on court &mdash; Game ${s.gameNumber}</div>` : ''}
+    ${s.gameNumber>0 ? `<div class="court-heading">Currently on court &mdash; Game ${s.gameNumber} <span class="game-timer" id="gameTimer">0:00</span></div>` : ''}
     <div class="court-row">
       <div class="team a">
         <div class="team-label">
@@ -645,6 +746,12 @@ function render(s){
   wrap.querySelectorAll('[data-edit]').forEach(btn=>{
     btn.addEventListener('click', ()=> handleEditName(btn.getAttribute('data-edit')));
   });
+  wrap.querySelectorAll('[data-toggle]').forEach(btn=>{
+    btn.addEventListener('click', ()=> handleToggleAvailability(btn.getAttribute('data-toggle')));
+  });
+  wrap.querySelectorAll('[data-delete]').forEach(btn=>{
+    btn.addEventListener('click', ()=> handleDeletePlayer(btn.getAttribute('data-delete')));
+  });
 
   // bench
   const benchList = document.getElementById('benchList');
@@ -665,7 +772,7 @@ function render(s){
       } else {
         n = Math.ceil(pos/5);
       }
-      if(n===0) return 'Starting lineup';
+      if(n===0) return '';
       if(n===1) return 'Next game';
       return `${n} games away`;
     }
@@ -695,9 +802,8 @@ function render(s){
           <button class="order-btn" data-down="${id}" ${isLast?'disabled':''} title="Move down">\u25BC</button>
         </div>`}
         <button class="edit-btn" data-edit="${id}" title="Edit name">Edit</button>
-        ${isAbsent
-          ? `<button class="leave-btn restore-btn" data-restore="${id}" title="Mark present">\u2713</button>`
-          : `<button class="leave-btn" data-leave="${id}" title="Not here right now">\u2715</button>`}
+        <button class="toggle-btn ${isAbsent?'unavail':'avail'}" data-toggle="${id}" title="${isAbsent?'Mark present':'Mark not present'}">${isAbsent?'\u2610':'\u2611'}</button>
+        <button class="delete-btn" data-delete="${id}" title="Remove completely">\u2715</button>
       </li>`;
     }).join('');
 
@@ -723,29 +829,11 @@ function render(s){
         render(state);
       });
     });
-    benchList.querySelectorAll('[data-leave]').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        if(!ensureUnlocked()) return;
-        const id = btn.getAttribute('data-leave');
-        const name = state.players[id] ? state.players[id].name : 'Player';
-        state = await loadState();
-        markAbsent(state, id);
-        await saveState(state);
-        showToast(`${name} marked not present`);
-        render(state);
-      });
+    benchList.querySelectorAll('[data-toggle]').forEach(btn=>{
+      btn.addEventListener('click', ()=> handleToggleAvailability(btn.getAttribute('data-toggle')));
     });
-    benchList.querySelectorAll('[data-restore]').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        if(!ensureUnlocked()) return;
-        const id = btn.getAttribute('data-restore');
-        const name = state.players[id] ? state.players[id].name : 'Player';
-        state = await loadState();
-        markPresent(state, id);
-        await saveState(state);
-        showToast(`${name} is back`);
-        render(state);
-      });
+    benchList.querySelectorAll('[data-delete]').forEach(btn=>{
+      btn.addEventListener('click', ()=> handleDeletePlayer(btn.getAttribute('data-delete')));
     });
     benchList.querySelectorAll('[data-edit]').forEach(btn=>{
       btn.addEventListener('click', ()=> handleEditName(btn.getAttribute('data-edit')));
@@ -772,6 +860,8 @@ function render(s){
       </li>`;
     }).join('');
   }
+
+  updateGameTimer();
 }
 
 function escapeHtml(str){
@@ -821,6 +911,32 @@ async function handleEditName(id){
   state.players[id].name = newName;
   await saveState(state);
   showToast(`Renamed ${currentName} \u2192 ${newName}`);
+  render(state);
+}
+
+async function handleToggleAvailability(id){
+  if(!ensureUnlocked()) return;
+  state = await loadState();
+  const player = state.players[id];
+  if(!player) return;
+  const wasAbsent = !!player.absent;
+  toggleAvailability(state, id);
+  await saveState(state);
+  showToast(wasAbsent ? `${player.name} is back` : `${player.name} marked not present`);
+  render(state);
+}
+
+async function handleDeletePlayer(id){
+  if(!ensureUnlocked()) return;
+  state = await loadState();
+  const player = state.players[id];
+  if(!player) return;
+  const name = player.name;
+  const confirmed = confirm(`Remove ${name} completely? This can't be undone \u2014 they'll need to rejoin from scratch if this was a mistake.`);
+  if(!confirmed) return;
+  deletePlayerCompletely(state, id);
+  await saveState(state);
+  showToast(`${name} removed`);
   render(state);
 }
 
@@ -903,6 +1019,7 @@ async function poll(){
   document.getElementById('versionFooter').textContent = `Script last updated: ${SCRIPT_UPDATED}`;
   state = await loadState();
   render(state);
+  setInterval(updateGameTimer, 1000);
   if(hasFirebase){
     // instant updates on every phone whenever anyone changes the state
     fbRef.on('value', (snap)=>{
