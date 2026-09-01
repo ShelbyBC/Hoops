@@ -1,6 +1,1219 @@
 <!DOCTYPE html>
 <html lang="en">
+<head><!DOCTYPE html>
+<html lang="en">
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>SBC Court Queue</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Teko:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Only used if you fill in firebaseConfig below, for live sync across phones -->
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
+<style>
+  :root{
+    --bg:#14181c;
+    --panel:#1c2126;
+    --panel-2:#20262c;
+    --line:#2c333a;
+    --red:#c23b2e;
+    --red-dim:#3a1f1c;
+    --blue:#2e6f95;
+    --blue-dim:#1c2c36;
+    --chalk:#f2ede4;
+    --muted:#8a94a0;
+    --gold:#e8b34c;
+    --wood:#b9793e;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--chalk);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .display{font-family:'Teko',sans-serif; font-weight:600; letter-spacing:0.02em;}
+
+  #app{max-width:640px; margin:0 auto; padding:14px 14px 60px;}
+
+  /* header */
+  .head{display:flex; align-items:center; justify-content:space-between; padding:6px 2px 14px;}
+  .head .brand{display:flex; align-items:center; gap:10px;}
+  .ball{width:22px; height:22px; border-radius:50%; background:radial-gradient(circle at 32% 30%, #f2a24a, var(--wood) 70%); position:relative; flex-shrink:0;}
+  .ball::before, .ball::after{content:""; position:absolute; background:#14181c; opacity:0.55;}
+  .ball::before{left:50%; top:0; bottom:0; width:2px; transform:translateX(-50%);}
+  .ball::after{top:50%; left:0; right:0; height:2px; transform:translateY(-50%);}
+  .head h1{font-size:26px; margin:0; letter-spacing:0.03em; text-transform:uppercase; line-height:1;}
+  .head .sub{font-size:11px; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase; margin-top:2px;}
+  .reset-btn{background:none; border:1px solid var(--line); color:var(--muted); font-size:11px; letter-spacing:0.05em; text-transform:uppercase; padding:7px 10px; border-radius:7px; cursor:pointer;}
+  .reset-btn:active{background:var(--panel-2);}
+
+  /* court */
+  .court{position:relative; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:10px; margin-bottom:16px;}
+  .court-row{display:flex; align-items:stretch; gap:5px; position:relative;}
+  .team{flex:1; min-width:0; background:var(--panel-2); border-radius:12px; padding:10px 6px 12px; border-top:3px solid transparent;}
+  .team.a{border-top-color:var(--red);}
+  .team.b{border-top-color:var(--blue);}
+  .team-label{display:flex; flex-direction:column; align-items:flex-start; gap:2px; margin-bottom:8px;}
+  .team-label .name{font-family:'Teko',sans-serif; font-size:19px; letter-spacing:0.04em; text-transform:uppercase;}
+  .team.a .name{color:#e8867a;}
+  .team.b .name{color:#7fb9db;}
+  .streak{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;}
+  .roster{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:5px;}
+  .roster li{font-size:13.5px; color:var(--chalk); padding:5px 6px; background:rgba(255,255,255,0.03); border-radius:6px; display:flex; align-items:center; justify-content:space-between; gap:4px;}
+  .roster li .rname{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;}
+  .roster li .roster-actions{display:flex; align-items:center; gap:2px; flex-shrink:0;}
+  .roster li.empty{color:var(--muted); font-style:italic; background:transparent; border:1px dashed var(--line); display:block;}
+  .edit-btn{
+    background:none; border:1px solid var(--line); color:var(--muted); font-size:13px;
+    padding:2px 6px; border-radius:6px; cursor:pointer; flex-shrink:0; line-height:1;
+  }
+  .edit-btn:active{color:var(--gold); border-color:var(--gold);}
+
+  .court-heading{
+    font-family:'Teko',sans-serif; font-size:20px; letter-spacing:0.05em; text-transform:uppercase;
+    color:var(--gold); text-align:left; margin-bottom:12px;
+  }
+  .game-timer{
+    font-family:'Inter',sans-serif; font-size:13px; letter-spacing:0; text-transform:none;
+    color:var(--chalk); background:var(--panel-2); border:1px solid var(--line);
+    border-radius:6px; padding:2px 8px; margin-left:6px; font-variant-numeric:tabular-nums;
+  }
+
+  .action{margin-top:14px;}
+  .win-row{display:flex; gap:8px;}
+  .btn{
+    flex:1; border:none; border-radius:10px; padding:13px 10px; font-family:'Teko',sans-serif;
+    font-size:18px; letter-spacing:0.03em; text-transform:uppercase; cursor:pointer; color:var(--chalk);
+  }
+  .btn:active{filter:brightness(1.15);}
+  .btn.win-a{background:var(--red);}
+  .btn.win-b{background:var(--blue);}
+  .btn.next{width:100%; background:var(--gold); color:#241a05;}
+  .waiting-msg{text-align:center; color:var(--muted); font-size:13px; padding:10px 4px 2px; line-height:1.5;}
+
+  /* join */
+  .join{display:flex; gap:8px; margin-bottom:16px;}
+  .join input{
+    flex:1; background:var(--panel); border:1px solid var(--line); color:var(--chalk);
+    padding:13px 14px; border-radius:10px; font-size:15px; font-family:'Inter',sans-serif; min-width:0;
+  }
+  .join input::placeholder{color:var(--muted);}
+  .join input:focus{outline:none; border-color:var(--gold);}
+  .join button{
+    background:var(--wood); color:#1a1108; border:none; border-radius:10px; padding:0 18px;
+    font-family:'Teko',sans-serif; font-size:17px; letter-spacing:0.03em; text-transform:uppercase; cursor:pointer;
+  }
+  .join button:disabled{opacity:0.4;}
+
+  /* bench */
+  .bench-head{display:flex; align-items:baseline; justify-content:space-between; margin:4px 2px 8px;}
+  .bench-head h2{font-family:'Teko',sans-serif; font-size:18px; letter-spacing:0.05em; text-transform:uppercase; margin:0; color:var(--muted);}
+  .bench-head span{font-size:12px; color:var(--muted);}
+  .bench-list{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;}
+  .bench-list li{
+    display:flex; align-items:center; gap:10px; background:var(--panel);
+    border:1px solid var(--line); border-radius:10px; padding:8px 10px;
+  }
+  .pos{
+    width:26px; height:26px; border-radius:50%; background:var(--panel-2); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-family:'Teko',sans-serif; font-size:14px; color:var(--muted); flex-shrink:0;
+  }
+  .bname{flex:1; min-width:0; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .bname.struck{text-decoration:line-through; color:var(--muted);}
+  .gcount{font-size:11px; color:var(--muted); flex-shrink:0;}
+  .toggle-btn{
+    background:none; border:none; font-size:17px; line-height:1; cursor:pointer; padding:2px 6px; flex-shrink:0;
+  }
+  .toggle-btn.avail{color:#4caf6e;}
+  .toggle-btn.avail:active{color:#6fd18f;}
+  .toggle-btn.unavail{color:var(--muted); opacity:0.55;}
+  .toggle-btn.unavail:active{color:var(--chalk); opacity:1;}
+  .delete-btn{
+    background:none; border:none; color:var(--red); font-size:15px; line-height:1; cursor:pointer;
+    padding:2px 6px; flex-shrink:0; opacity:0.75;
+  }
+  .delete-btn:active{opacity:1;}
+  .swap-btn{
+    background:none; border:1px solid var(--line); color:var(--muted); font-size:13px; line-height:1;
+    padding:3px 6px; border-radius:6px; cursor:pointer; flex-shrink:0;
+  }
+  .swap-btn.selected{
+    border-color:var(--gold); color:var(--gold); background:rgba(232,179,76,0.15);
+  }
+  .empty-bench{color:var(--muted); font-size:13px; text-align:center; padding:16px 0;}
+
+  .bench-list li.next-up{border-color:#3e8a5c; background:rgba(76,175,110,0.10);}
+  .bench-list li.next-up .pos{border-color:#4caf6e; color:#6fd18f;}
+  .games-away{font-size:10px; color:var(--muted); letter-spacing:0.02em; flex-shrink:0; white-space:nowrap;}
+  .games-away.soon{color:#6fd18f; text-transform:uppercase; letter-spacing:0.05em; font-weight:600;}
+  .bench-list li.absent{opacity:0.55;}
+
+  .btn.back{
+    width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--muted);
+    margin-top:8px; padding:10px; font-size:15px;
+  }
+  .btn.start-over{
+    width:100%; background:var(--panel-2); border:1px solid var(--red); color:#e8867a;
+    margin-top:8px; padding:10px; font-size:15px;
+  }
+  .admin-on{color:var(--gold) !important; border-color:var(--gold) !important;}
+
+  .hist-list{max-height:300px; overflow-y:auto;}
+  .hist-list li{flex-direction:column; align-items:stretch; gap:4px;}
+  .hist-top{display:flex; justify-content:space-between; font-size:11px; color:var(--muted); letter-spacing:0.03em;}
+  .hist-top .hist-game{font-family:'Teko',sans-serif; font-size:14px; color:var(--gold); letter-spacing:0.04em; text-transform:uppercase;}
+  .hist-teams{font-size:12.5px; color:var(--chalk); display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
+  .hist-teams .vs{color:var(--muted); font-size:10px; text-transform:uppercase;}
+  .hist-teams .ta{color:#e8867a;}
+  .hist-teams .tb{color:#7fb9db;}
+
+  .viewer-footer{
+    text-align:center; font-size:11px; color:var(--muted); opacity:0.7;
+    margin-top:18px; padding-bottom:4px;
+  }
+
+  .toast{
+    position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
+    background:var(--panel-2); border:1px solid var(--line); color:var(--chalk);
+    padding:9px 16px; border-radius:20px; font-size:13px; opacity:0; pointer-events:none; transition:opacity 0.25s;
+    z-index:50; white-space:nowrap;
+  }
+  .toast.show{opacity:1;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="head">
+    <div class="brand">
+      <div class="ball"></div>
+      <div>
+        <h1>SBC Court Queue</h1>
+        <div class="sub">
+          <div id="subheadLine1">loading&hellip;</div>
+          <div id="subheadLine2"></div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex; gap:6px;">
+      <button class="reset-btn" id="adminBtn">&#128274; Admin</button>
+      <button class="reset-btn" id="resetBtn">New Night</button>
+    </div>
+  </div>
+
+  <div class="join">
+    <input id="nameInput" type="text" placeholder="Type first &amp; last name - hit Join" maxlength="24" autocomplete="off">
+    <button id="joinBtn">Join</button>
+  </div>
+
+  <div class="court" id="courtWrap"></div>
+
+  <div class="bench-head">
+    <h2>Bench</h2>
+    <span id="benchCount">0 waiting</span>
+  </div>
+  <ul class="bench-list" id="benchList"></ul>
+
+  <div class="bench-head" style="margin-top:20px;">
+    <h2>History</h2>
+    <span id="historyCount">0 games played tonight</span>
+  </div>
+  <ul class="bench-list hist-list" id="historyList"></ul>
+
+  <div class="viewer-footer" id="viewerCount"></div>
+  <div class="viewer-footer" id="versionFooter"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const STORAGE_KEY = 'pickup-state-v1';
+let state = null;
+let saving = false;
+let swapSelectionId = null; // id of the on-court player currently armed for a team swap, if any
+
+function defaultState(){
+  return {
+    players: {},        // id -> {name, totalGames}
+    queue: [],           // array of ids, FIFO
+    slots: {
+      A: { ids: [], stint: 0 },
+      B: { ids: [], stint: 0 }
+    },
+    gameNumber: 0,        // 0 = no game started yet
+    needsWinner: false,   // true only while game 1's result is pending
+    gameLog: [],           // finalized games: {gameNumber, teamA:[names], teamB:[names], winner, ts}
+    undoStack: [],          // snapshots to revert to if "Back a game" is used
+    gameStartedAt: null,          // timestamp the current game's teams became full 5v5
+    gameStartedForGameNumber: 0,  // which gameNumber that timestamp belongs to
+  };
+}
+
+function uid(){
+  return 'p' + Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-4);
+}
+
+// ---- config / version info ----
+// Update this line by hand any time you save a new version of this file, so
+// everyone can tell at a glance whether their browser has the latest copy.
+const SCRIPT_UPDATED = "September 1, 2026 10:28 AM EDT";
+
+// ---- admin lock ----
+// Only people who know this PIN can pick winners, advance games, or undo.
+// Change this to something only Shannon and David know, then re-upload.
+const ADMIN_PIN = "2468";
+const ADMIN_KEY = 'sbc-admin-unlocked';
+
+function isUnlocked(){
+  return localStorage.getItem(ADMIN_KEY) === 'yes';
+}
+function requestUnlock(){
+  const pin = prompt('Enter the admin PIN to manage the queue:');
+  if(pin === null) return false;
+  if(pin === ADMIN_PIN){
+    localStorage.setItem(ADMIN_KEY, 'yes');
+    updateAdminBtn();
+    return true;
+  }
+  alert('Wrong PIN.');
+  return false;
+}
+function ensureUnlocked(){
+  if(isUnlocked()) return true;
+  return requestUnlock();
+}
+function updateAdminBtn(){
+  const btn = document.getElementById('adminBtn');
+  if(!btn) return;
+  if(isUnlocked()){
+    btn.textContent = '\u{1F513} Admin';
+    btn.classList.add('admin-on');
+  } else {
+    btn.textContent = '\u{1F512} Admin';
+    btn.classList.remove('admin-on');
+  }
+}
+
+// ---- storage: three modes ----
+// 1. Firebase (fill in firebaseConfig below) -> real-time sync across every phone.
+// 2. Claude's built-in cloud storage, when running inside a Claude artifact.
+// 3. localStorage fallback -> works standalone, but only on that one device.
+const firebaseConfig = {
+  // Paste your Firebase project's config here. Leave apiKey as-is to skip Firebase.
+  apiKey: "AIzaSyDHC1fvj1SEDbzArQRaW1E8AG3QBsNH66M",
+  databaseURL: "https://sbc-hoops-default-rtdb.firebaseio.com/",
+};
+
+const hasFirebase = firebaseConfig.apiKey !== "YOUR_API_KEY" && typeof firebase !== 'undefined';
+const hasCloudStorage = (typeof window.storage !== 'undefined');
+
+let fbRef = null;
+let viewersRef = null;
+if(hasFirebase){
+  firebase.initializeApp(firebaseConfig);
+  fbRef = firebase.database().ref(STORAGE_KEY);
+  viewersRef = firebase.database().ref(STORAGE_KEY + '-viewers');
+}
+
+// ---- presence: "N active viewers in the last 5 minutes" ----
+// Each open tab checks in every 25s. Anyone with the page open counts
+// its own heartbeat against everyone else's to show a rough live count.
+const VIEWER_WINDOW_MS = 5 * 60 * 1000;
+let viewersData = {};
+let mySessionId = null;
+
+function startPresence(){
+  if(!hasFirebase || !viewersRef) return;
+  mySessionId = uid();
+  const myRef = viewersRef.child(mySessionId);
+  const beat = () => myRef.set(firebase.database.ServerValue.TIMESTAMP);
+  beat();
+  setInterval(beat, 25000);
+  myRef.onDisconnect().remove();
+
+  viewersRef.on('value', (snap)=>{
+    viewersData = snap.val() || {};
+    renderViewerCount();
+  });
+  // re-check every 15s even with no new writes, so stale tabs age out of the window
+  setInterval(renderViewerCount, 15000);
+}
+
+function renderViewerCount(){
+  const el = document.getElementById('viewerCount');
+  if(!el || !hasFirebase) return;
+  const now = Date.now();
+  const count = Object.values(viewersData).filter(ts => typeof ts === 'number' && (now - ts) <= VIEWER_WINDOW_MS).length;
+  el.textContent = count===1 ? '1 person active in the last 5 min' : `${count} people active in the last 5 min`;
+}
+
+// ticks every second so the current-game clock keeps running without
+// waiting on a full re-render or a Firebase update from someone else
+function updateGameTimer(){
+  const el = document.getElementById('gameTimer');
+  if(!el) return;
+  if(!state || !state.gameNumber || !state.gameStartedAt){
+    el.textContent = '0:00';
+    return;
+  }
+  const elapsedSec = Math.max(0, Math.floor((Date.now() - state.gameStartedAt) / 1000));
+  const mm = Math.floor(elapsedSec / 60);
+  const ss = elapsedSec % 60;
+  el.textContent = `${mm}:${ss < 10 ? '0' : ''}${ss}`;
+}
+
+// Firebase silently drops empty arrays/objects when saving, so a fresh read
+// back can be missing keys entirely \u2014 fill them back in with safe defaults.
+function normalizeState(val){
+  if(!val) return defaultState();
+  return {
+    players: val.players || {},
+    queue: val.queue || [],
+    slots: {
+      A: { ids: (val.slots && val.slots.A && val.slots.A.ids) || [], stint: (val.slots && val.slots.A && val.slots.A.stint) || 0 },
+      B: { ids: (val.slots && val.slots.B && val.slots.B.ids) || [], stint: (val.slots && val.slots.B && val.slots.B.stint) || 0 },
+    },
+    gameNumber: val.gameNumber || 0,
+    needsWinner: !!val.needsWinner,
+    gameLog: val.gameLog || [],
+    undoStack: val.undoStack || [],
+    gameStartedAt: val.gameStartedAt || null,
+    gameStartedForGameNumber: val.gameStartedForGameNumber || 0,
+  };
+}
+
+async function loadState(){
+  try{
+    if(hasFirebase){
+      const snap = await fbRef.once('value');
+      const val = snap.val();
+      if(val) return normalizeState(val);
+    } else if(hasCloudStorage){
+      const res = await window.storage.get(STORAGE_KEY, true);
+      if(res && res.value) return JSON.parse(res.value);
+    } else {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw) return JSON.parse(raw);
+    }
+  }catch(e){ /* key doesn't exist yet */ }
+  return defaultState();
+}
+
+async function saveState(s){
+  if(hasFirebase){
+    await fbRef.set(s);
+  } else if(hasCloudStorage){
+    await window.storage.set(STORAGE_KEY, JSON.stringify(s), true);
+  } else {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  }
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+// pull players from the front of the queue into a slot, respecting availability
+// and skipping anyone currently marked absent (struck out on the bench).
+// Only tops up games already in progress \u2014 the very first game now only
+// starts when an admin taps "Start First Game", not automatically at 10.
+function tryFillSlots(s){
+  if(s.gameNumber === 0) return;
+
+  function takeActive(n){
+    const activeIds = s.queue.filter(id => s.players[id] && !s.players[id].absent);
+    if(activeIds.length < n) return null;
+    const chosen = activeIds.slice(0, n);
+    const chosenSet = new Set(chosen);
+    s.queue = s.queue.filter(id => !chosenSet.has(id));
+    return chosen;
+  }
+
+  // top up any slot short of 5 \u2014 whether it's completely empty (a fresh
+  // team) or just missing one seat (someone was pulled off mid-stint), so a
+  // single removal doesn't strand the rest of that team
+  ['A','B'].forEach(k=>{
+    const slot = s.slots[k];
+    const missing = 5 - slot.ids.length;
+    if(missing > 0){
+      const wasEmpty = slot.ids.length === 0;
+      const extra = takeActive(missing);
+      if(extra){
+        slot.ids = slot.ids.concat(extra);
+        if(wasEmpty) slot.stint = 0;
+      }
+    }
+  });
+  stampGameStartIfReady(s);
+}
+
+// manually drafts the first 10 active players into two random teams of 5 and
+// kicks off Game 1. Returns false (no-op) if there aren't 10 active yet.
+function startFirstGame(s){
+  if(s.gameNumber !== 0) return false;
+  const activeIds = s.queue.filter(id => s.players[id] && !s.players[id].absent);
+  if(activeIds.length < 10) return false;
+  pushUndoSnapshot(s);
+  const chosen = activeIds.slice(0, 10);
+  const chosenSet = new Set(chosen);
+  s.queue = s.queue.filter(id => !chosenSet.has(id));
+  const shuffled = shuffle(chosen);
+  s.slots.A = { ids: shuffled.slice(0,5), stint: 0 };
+  s.slots.B = { ids: shuffled.slice(5,10), stint: 0 };
+  s.gameNumber = 1;
+  s.needsWinner = true;
+  stampGameStartIfReady(s);
+  return true;
+}
+
+// hard fallback for nights where "Back a game" isn't available (e.g. a game
+// already in progress from before undo tracked this, or the undo history has
+// since rolled past it): resets the court back to the pre-draft state,
+// sending everyone currently playing back to the bench so admins can redraft
+// with "Start First Game." Completed game history and each player's game
+// counts are left alone \u2014 this only resets the CURRENT unfinished game.
+function startOver(s){
+  if(s.gameNumber === 0) return false;
+  const onCourtIds = [...s.slots.A.ids, ...s.slots.B.ids];
+  s.queue = onCourtIds.concat(s.queue);
+  s.slots = { A: { ids: [], stint: 0 }, B: { ids: [], stint: 0 } };
+  s.gameNumber = 0;
+  s.needsWinner = false;
+  s.gameStartedAt = null;
+  s.gameStartedForGameNumber = 0;
+  return true;
+}
+
+// records when the CURRENT game's clock should start: the first moment both
+// teams are a full 5v5 for this particular gameNumber. Only stamps once per
+// gameNumber, so incidental tryFillSlots calls (a reorder, a late join that
+// doesn't change either team) don't reset the clock.
+function stampGameStartIfReady(s){
+  if(s.gameNumber > 0 && s.slots.A.ids.length===5 && s.slots.B.ids.length===5 && s.gameStartedForGameNumber !== s.gameNumber){
+    s.gameStartedAt = Date.now();
+    s.gameStartedForGameNumber = s.gameNumber;
+  }
+}
+
+function addPlayer(s, name){
+  const id = uid();
+  s.players[id] = { name, totalGames: 0, absent: false };
+  s.queue.push(id);
+  tryFillSlots(s);
+  return id;
+}
+
+// removes id from whichever court slot holds it, if any; returns true if it did
+function removeFromCourtIfPresent(s, id){
+  let removed = false;
+  ['A','B'].forEach(k=>{
+    const slot = s.slots[k];
+    const idx = slot.ids.indexOf(id);
+    if(idx !== -1){
+      slot.ids.splice(idx, 1);
+      removed = true;
+    }
+  });
+  return removed;
+}
+
+// single checkmark toggle used everywhere (bench or on-court): flips someone
+// between available/unavailable. If they're currently on court and get marked
+// unavailable, they're pulled off immediately and the seat is backfilled from
+// the bench, rather than forcing them to finish out the team's next game.
+function toggleAvailability(s, id){
+  const player = s.players[id];
+  if(!player) return;
+  if(player.absent){
+    player.absent = false;
+    tryFillSlots(s);
+  } else {
+    const wasOnCourt = removeFromCourtIfPresent(s, id);
+    if(wasOnCourt){
+      // knocked out of the active 10 -> straight to the top of the bench, not
+      // the back of the line, so if they come back available they're first
+      // in line for the next open seat rather than stuck behind everyone
+      // who backfilled while they were out
+      s.queue.unshift(id);
+    }
+    player.absent = true;
+    tryFillSlots(s);
+  }
+}
+
+// fully removes a player from the night \u2014 court, bench, and history-name
+// lookups going forward. Distinct from toggling absent, which just benches
+// them but keeps their spot in line.
+function deletePlayerCompletely(s, id){
+  removeFromCourtIfPresent(s, id);
+  s.queue = s.queue.filter(x => x !== id);
+  delete s.players[id];
+  tryFillSlots(s);
+}
+
+// which court slot (if any) currently holds this player
+function teamContaining(s, id){
+  if(s.slots.A.ids.includes(id)) return 'A';
+  if(s.slots.B.ids.includes(id)) return 'B';
+  return null;
+}
+
+// trades two on-court players between Team A and Team B in place
+function swapCourtPlayers(s, id1, id2){
+  const team1 = teamContaining(s, id1);
+  const team2 = teamContaining(s, id2);
+  if(!team1 || !team2 || team1 === team2) return false;
+  const idx1 = s.slots[team1].ids.indexOf(id1);
+  const idx2 = s.slots[team2].ids.indexOf(id2);
+  s.slots[team1].ids[idx1] = id2;
+  s.slots[team2].ids[idx2] = id1;
+  return true;
+}
+
+// swaps any two players, wherever they currently are: both on court (trades
+// teams), both on the bench (trades line position), or one of each
+// (substitutes the bench player onto the court in the other's place)
+function swapPlayers(s, id1, id2){
+  const team1 = teamContaining(s, id1);
+  const team2 = teamContaining(s, id2);
+
+  if(team1 && team2){
+    if(team1 === team2) return false;
+    return swapCourtPlayers(s, id1, id2);
+  }
+
+  if(team1 && !team2){
+    const idx2 = s.queue.indexOf(id2);
+    if(idx2 === -1) return false;
+    const slotIdx = s.slots[team1].ids.indexOf(id1);
+    s.slots[team1].ids[slotIdx] = id2;
+    s.queue[idx2] = id1;
+    return true;
+  }
+
+  if(!team1 && team2){
+    const idx1 = s.queue.indexOf(id1);
+    if(idx1 === -1) return false;
+    const slotIdx = s.slots[team2].ids.indexOf(id2);
+    s.slots[team2].ids[slotIdx] = id1;
+    s.queue[idx1] = id2;
+    return true;
+  }
+
+  const idx1 = s.queue.indexOf(id1);
+  const idx2 = s.queue.indexOf(id2);
+  if(idx1 === -1 || idx2 === -1) return false;
+  s.queue[idx1] = id2;
+  s.queue[idx2] = id1;
+  return true;
+}
+
+// swap an active bench player one spot earlier (direction -1) or later (direction +1)
+// among other active players, leaving absent players' raw positions untouched
+function moveActivePlayer(s, id, direction){
+  const activeIds = s.queue.filter(x => s.players[x] && !s.players[x].absent);
+  const idx = activeIds.indexOf(id);
+  if(idx === -1) return false;
+  const targetIdx = idx + direction;
+  if(targetIdx < 0 || targetIdx >= activeIds.length) return false;
+
+  const tmp = activeIds[idx];
+  activeIds[idx] = activeIds[targetIdx];
+  activeIds[targetIdx] = tmp;
+
+  let ptr = 0;
+  s.queue = s.queue.map(x=>{
+    if(s.players[x] && !s.players[x].absent){
+      const replaced = activeIds[ptr];
+      ptr++;
+      return replaced;
+    }
+    return x;
+  });
+  return true;
+}
+
+function playerNameSafe(s, id){
+  return s.players[id] ? s.players[id].name : '\u2014';
+}
+
+// saved right before any game-advancing action, so "Back a game" can restore it
+function pushUndoSnapshot(s){
+  if(!s.undoStack) s.undoStack = [];
+  s.undoStack.push({
+    players: JSON.parse(JSON.stringify(s.players)),
+    queue: s.queue.slice(),
+    slots: JSON.parse(JSON.stringify(s.slots)),
+    gameNumber: s.gameNumber,
+    needsWinner: s.needsWinner,
+    gameLog: (s.gameLog || []).slice(),
+    gameStartedAt: s.gameStartedAt || null,
+    gameStartedForGameNumber: s.gameStartedForGameNumber || 0,
+  });
+  if(s.undoStack.length > 8) s.undoStack.shift();
+}
+
+function logGame(s, gameNumber, teamAIds, teamBIds, winnerKey){
+  if(!s.gameLog) s.gameLog = [];
+  s.gameLog.push({
+    gameNumber,
+    teamA: teamAIds.map(id=>playerNameSafe(s,id)),
+    teamB: teamBIds.map(id=>playerNameSafe(s,id)),
+    winner: winnerKey, // 'A' | 'B' | null
+    ts: Date.now(),
+  });
+  if(s.gameLog.length > 300) s.gameLog.shift();
+}
+
+function undoLastGame(s){
+  if(!s.undoStack || s.undoStack.length===0) return false;
+  const snap = s.undoStack.pop();
+  // snapshots go through Firebase saves just like top-level state, so any
+  // field that was an empty array/object at capture time (very likely for
+  // the very first snapshot, right when Game 1's teams are drafted) can get
+  // silently dropped on the way back \u2014 run it through the same repair
+  // normalizeState() already does for the live state.
+  const restored = normalizeState(snap);
+
+  // anyone who joined AFTER this snapshot was taken shouldn't be erased by
+  // going back in time \u2014 fold them back onto the bench so everybody who
+  // signed up stays on the list, even for games they weren't around for yet
+  const currentPlayers = s.players || {};
+  Object.keys(currentPlayers).forEach(id=>{
+    if(!restored.players[id]){
+      restored.players[id] = currentPlayers[id];
+      const alreadyPlaced = restored.queue.includes(id) ||
+        restored.slots.A.ids.includes(id) || restored.slots.B.ids.includes(id);
+      if(!alreadyPlaced){
+        restored.queue.push(id);
+      }
+    }
+  });
+
+  s.players = restored.players;
+  s.queue = restored.queue;
+  s.slots = restored.slots;
+  s.gameNumber = restored.gameNumber;
+  s.needsWinner = restored.needsWinner;
+  s.gameLog = restored.gameLog;
+  s.gameStartedAt = restored.gameStartedAt;
+  s.gameStartedForGameNumber = restored.gameStartedForGameNumber;
+  return true;
+}
+
+function recordWinner(s, winnerKey){
+  pushUndoSnapshot(s);
+  const finishedGameNumber = s.gameNumber;
+  logGame(s, finishedGameNumber, s.slots.A.ids, s.slots.B.ids, winnerKey);
+
+  const loserKey = winnerKey==='A' ? 'B' : 'A';
+  const winSlot = s.slots[winnerKey];
+  const loseSlot = s.slots[loserKey];
+
+  // everyone who just played gets a game credit
+  [...winSlot.ids, ...loseSlot.ids].forEach(id=>{
+    if(s.players[id]) s.players[id].totalGames += 1;
+  });
+
+  winSlot.stint = 1;
+  // loser heads to the back of the queue, done for this stint
+  loseSlot.ids.forEach(id=> s.queue.push(id));
+  loseSlot.ids = [];
+  loseSlot.stint = 0;
+
+  s.needsWinner = false;
+  s.gameNumber += 1;
+  tryFillSlots(s);
+}
+
+function nextGame(s){
+  pushUndoSnapshot(s);
+  logGame(s, s.gameNumber, s.slots.A.ids, s.slots.B.ids, null);
+
+  ['A','B'].forEach(k=>{
+    const slot = s.slots[k];
+    if(slot.ids.length===5){
+      slot.stint += 1;
+      slot.ids.forEach(id=>{ if(s.players[id]) s.players[id].totalGames += 1; });
+    }
+  });
+  ['A','B'].forEach(k=>{
+    const slot = s.slots[k];
+    if(slot.ids.length===5 && slot.stint>=2){
+      slot.ids.forEach(id=> s.queue.push(id));
+      slot.ids = [];
+      slot.stint = 0;
+    }
+  });
+  s.gameNumber += 1;
+  tryFillSlots(s);
+}
+
+// ---- rendering ----
+function playerName(s, id){
+  return s.players[id] ? s.players[id].name : '\u2014';
+}
+
+function render(s){
+  const subLine1 = document.getElementById('subheadLine1');
+  const subLine2 = document.getElementById('subheadLine2');
+  const signedUp = Object.keys(s.players).length;
+  const stillIn = Object.values(s.players).filter(p=>!p.absent).length;
+  subLine1.textContent = `${signedUp} signed up`;
+  if(s.gameNumber===0){
+    const needed = Math.max(0, 10 - stillIn);
+    subLine2.textContent = `${stillIn} ready to play` + (needed>0 ? ` \u2014 need ${needed} more to start` : '');
+  } else {
+    subLine2.textContent = `${stillIn} ready to play`;
+  }
+
+  // court
+  const wrap = document.getElementById('courtWrap');
+  const aFull = s.slots.A.ids.length===5;
+  const bFull = s.slots.B.ids.length===5;
+  const bothFull = aFull && bFull;
+
+  const rosterHtml = (slot) => {
+    if(slot.ids.length===0){
+      return '<li class="empty">waiting for players</li>';
+    }
+    return slot.ids.map(id=>`<li>
+      <button class="swap-btn ${swapSelectionId===id?'selected':''}" data-swap="${id}" title="Select to swap">\u2194</button>
+      <span class="rname">${escapeHtml(playerName(s,id))}</span>
+      <button class="edit-btn" data-edit="${id}" title="Edit name">\u270E</button>
+    </li>`).join('');
+  };
+
+  let actionHtml = '';
+  if(s.gameNumber===0){
+    if(stillIn >= 10){
+      actionHtml = `<button class="btn next" data-action="start-first-game">Start First Game</button>`;
+    } else {
+      actionHtml = `<div class="waiting-msg">Waiting on ${10 - stillIn} more to join before the first game can start.</div>`;
+    }
+  } else if(!bothFull){
+    const need = (5-s.slots.A.ids.length) + (5-s.slots.B.ids.length);
+    actionHtml = `<div class="waiting-msg">Waiting on ${need} more from the bench to fill both teams.</div>`;
+  } else if(s.needsWinner){
+    actionHtml = `
+      <div class="waiting-msg" style="margin-bottom:8px;">Game 1 \u2014 who won?</div>
+      <div class="win-row">
+        <button class="btn win-a" data-action="win-a">Team A won</button>
+        <button class="btn win-b" data-action="win-b">Team B won</button>
+      </div>`;
+  } else {
+    actionHtml = `<button class="btn next" data-action="next">Game finished \u2192 next game</button>`;
+  }
+  if(s.undoStack && s.undoStack.length>0){
+    actionHtml += `<button class="btn back" data-action="undo">\u21A9 Back a game</button>`;
+  }
+  if(s.gameNumber > 0){
+    actionHtml += `<button class="btn start-over" data-action="start-over">Start Over</button>`;
+  }
+
+  const stintLabel = (slot) => {
+    if(slot.ids.length===0) return '';
+    return slot.stint===0 ? 'Playing 1st game' : 'Playing 2nd game';
+  };
+
+  wrap.innerHTML = `
+    ${s.gameNumber>0 ? `<div class="court-heading">Currently on court &mdash; Game ${s.gameNumber} <span class="game-timer" id="gameTimer">0:00</span></div>` : ''}
+    <div class="court-row">
+      <div class="team a">
+        <div class="team-label">
+          <span class="name">Team A</span>
+          <span class="streak">${stintLabel(s.slots.A)}</span>
+        </div>
+        <ul class="roster">${rosterHtml(s.slots.A)}</ul>
+      </div>
+      <div class="team b">
+        <div class="team-label">
+          <span class="name">Team B</span>
+          <span class="streak">${stintLabel(s.slots.B)}</span>
+        </div>
+        <ul class="roster">${rosterHtml(s.slots.B)}</ul>
+      </div>
+    </div>
+    <div class="action">${actionHtml}</div>
+  `;
+
+  wrap.querySelectorAll('[data-action]').forEach(btn=>{
+    btn.addEventListener('click', onAction);
+  });
+  wrap.querySelectorAll('[data-edit]').forEach(btn=>{
+    btn.addEventListener('click', ()=> handleEditName(btn.getAttribute('data-edit')));
+  });
+  wrap.querySelectorAll('[data-toggle]').forEach(btn=>{
+    btn.addEventListener('click', ()=> handleToggleAvailability(btn.getAttribute('data-toggle')));
+  });
+  wrap.querySelectorAll('[data-delete]').forEach(btn=>{
+    btn.addEventListener('click', ()=> handleDeletePlayer(btn.getAttribute('data-delete')));
+  });
+  wrap.querySelectorAll('[data-swap]').forEach(btn=>{
+    btn.addEventListener('click', ()=> handleArrowClick(btn.getAttribute('data-swap')));
+  });
+
+  // bench
+  const benchList = document.getElementById('benchList');
+  document.getElementById('benchCount').textContent = `${s.queue.length} waiting`;
+  if(s.queue.length===0){
+    benchList.innerHTML = `<li class="empty-bench" style="list-style:none;">Bench is empty \u2014 join above</li>`;
+  } else {
+    const highlightCount = s.gameNumber===0 ? 10 : 5;
+    const activeOrdered = s.queue.filter(id => s.players[id] && !s.players[id].absent);
+    const nextUpSet = new Set(activeOrdered.slice(0, highlightCount));
+
+    // roughly how many games until this bench position gets pulled onto the court \u2014
+    // one team of 5 rotates in per game, except the very first game which seats 10 at once
+    function gamesAwayLabel(pos){
+      let n;
+      if(s.gameNumber===0){
+        n = pos<=10 ? 0 : Math.ceil((pos-10)/5);
+      } else {
+        n = Math.ceil(pos/5);
+      }
+      if(n===0) return '';
+      if(n===1) return 'Next game';
+      return `${n} games away`;
+    }
+
+    let activePos = 0;
+    const activeTotal = activeOrdered.length;
+    benchList.innerHTML = s.queue.map((id)=>{
+      const p = s.players[id];
+      if(!p) return '';
+      const isAbsent = !!p.absent;
+      const isNext = !isAbsent && nextUpSet.has(id);
+      let posLabel;
+      let isFirst = false, isLast = false;
+      if(isAbsent){ posLabel = '\u2014'; } else {
+        activePos++;
+        posLabel = activePos;
+        isFirst = activePos===1;
+        isLast = activePos===activeTotal;
+      }
+      return `<li class="${isAbsent?'absent':''} ${isNext?'next-up':''}">
+        <div class="pos">${posLabel}</div>
+        <button class="swap-btn ${swapSelectionId===id?'selected':''}" data-swap="${id}" title="Select to swap">\u2194</button>
+        <div class="bname ${isAbsent?'struck':''}">${escapeHtml(p.name)}</div>
+        <span class="games-away ${isNext?'soon':''}">${isAbsent ? 'Not playing' : gamesAwayLabel(activePos)}</span>
+        <div class="gcount">${p.totalGames} gm${p.totalGames===1?'':'s'}</div>
+        <button class="edit-btn" data-edit="${id}" title="Edit name">\u270E</button>
+        <button class="toggle-btn ${isAbsent?'unavail':'avail'}" data-toggle="${id}" title="${isAbsent?'Mark present':'Mark not present'}">${isAbsent?'\u2610':'\u2611'}</button>
+        <button class="delete-btn" data-delete="${id}" title="Remove completely">\u2715</button>
+      </li>`;
+    }).join('');
+
+    benchList.querySelectorAll('[data-toggle]').forEach(btn=>{
+      btn.addEventListener('click', ()=> handleToggleAvailability(btn.getAttribute('data-toggle')));
+    });
+    benchList.querySelectorAll('[data-delete]').forEach(btn=>{
+      btn.addEventListener('click', ()=> handleDeletePlayer(btn.getAttribute('data-delete')));
+    });
+    benchList.querySelectorAll('[data-edit]').forEach(btn=>{
+      btn.addEventListener('click', ()=> handleEditName(btn.getAttribute('data-edit')));
+    });
+    benchList.querySelectorAll('[data-swap]').forEach(btn=>{
+      btn.addEventListener('click', ()=> handleArrowClick(btn.getAttribute('data-swap')));
+    });
+  }
+
+  // history
+  const historyList = document.getElementById('historyList');
+  const log = (s.gameLog || []).slice().reverse();
+  document.getElementById('historyCount').textContent = `${log.length} game${log.length===1?'':'s'} played tonight`;
+  if(log.length===0){
+    historyList.innerHTML = `<li class="empty-bench" style="list-style:none;">No games played yet</li>`;
+  } else {
+    historyList.innerHTML = log.map(g=>{
+      const time = new Date(g.ts).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+      const winnerNote = g.winner ? (g.winner==='A' ? ' \u00B7 Team A won' : ' \u00B7 Team B won') : '';
+      return `<li>
+        <div class="hist-top"><span class="hist-game">Game ${g.gameNumber}</span><span>${time}${winnerNote}</span></div>
+        <div class="hist-teams">
+          <span class="ta">${g.teamA.map(escapeHtml).join(', ')}</span>
+          <span class="vs">vs</span>
+          <span class="tb">${g.teamB.map(escapeHtml).join(', ')}</span>
+        </div>
+      </li>`;
+    }).join('');
+  }
+
+  updateGameTimer();
+}
+
+function escapeHtml(str){
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+async function onAction(e){
+  const action = e.currentTarget.getAttribute('data-action');
+  if(!ensureUnlocked()) return;
+  state = await loadState();
+  if(action==='start-first-game'){
+    const ok = startFirstGame(state);
+    if(!ok) { render(state); return; }
+  }
+  else if(action==='win-a') recordWinner(state, 'A');
+  else if(action==='win-b') recordWinner(state, 'B');
+  else if(action==='next') nextGame(state);
+  else if(action==='undo'){
+    const ok = undoLastGame(state);
+    if(!ok) return;
+  }
+  else if(action==='start-over'){
+    const confirmed = confirm('Start over? This clears the current teams and sends everyone back to the bench to redraft with "Start First Game." Completed game history and game counts are kept.');
+    if(!confirmed) return;
+    const ok = startOver(state);
+    if(!ok) return;
+  }
+  await saveState(state);
+  render(state);
+}
+
+async function handleEditName(id){
+  if(!ensureUnlocked()) return;
+  state = await loadState();
+  const player = state.players[id];
+  if(!player){ return; }
+  const currentName = player.name;
+  const input = prompt('Update name:', currentName);
+  if(input === null) return; // cancelled
+  const newName = input.trim();
+  if(!newName){
+    alert('Name cannot be empty.');
+    return;
+  }
+  if(newName === currentName) return;
+
+  const isDup = Object.entries(state.players).some(([pid,p]) =>
+    pid !== id && p.name.trim().toLowerCase() === newName.toLowerCase()
+  );
+  if(isDup){
+    const proceed = confirm(`"${newName}" is already on the list tonight. Rename anyway?`);
+    if(!proceed) return;
+  }
+
+  state.players[id].name = newName;
+  await saveState(state);
+  showToast(`Renamed ${currentName} \u2192 ${newName}`);
+  render(state);
+}
+
+async function handleToggleAvailability(id){
+  if(!ensureUnlocked()) return;
+  state = await loadState();
+  const player = state.players[id];
+  if(!player) return;
+  const wasAbsent = !!player.absent;
+  toggleAvailability(state, id);
+  await saveState(state);
+  showToast(wasAbsent ? `${player.name} is back` : `${player.name} marked not present`);
+  render(state);
+}
+
+// arrow next to every name (bench or on-court): first tap arms a player for a
+// swap, tapping a second arrow confirms and swaps them \u2014 trading teams if
+// both are on court, substituting if one's on the bench, or just trading line
+// position if both are on the bench
+async function handleArrowClick(id){
+  if(!ensureUnlocked()) return;
+
+  if(swapSelectionId === id){
+    // tapping the same arrow again cancels the selection
+    swapSelectionId = null;
+    render(state);
+    return;
+  }
+
+  if(swapSelectionId === null){
+    swapSelectionId = id;
+    render(state);
+    return;
+  }
+
+  const firstId = swapSelectionId;
+  const secondId = id;
+  swapSelectionId = null;
+
+  state = await loadState();
+
+  if(!state.players[firstId] || !state.players[secondId]){
+    alert('One of those players is no longer on the list.');
+    render(state);
+    return;
+  }
+
+  const teamFirst = teamContaining(state, firstId);
+  const teamSecond = teamContaining(state, secondId);
+
+  if(teamFirst && teamSecond && teamFirst === teamSecond){
+    // picked two people from the same on-court team \u2014 just move the
+    // selection to whichever one was tapped most recently instead of erroring out
+    swapSelectionId = secondId;
+    render(state);
+    return;
+  }
+
+  // don't let an unavailable bench player get substituted straight onto the court
+  const bringingInAbsent =
+    (teamFirst && !teamSecond && state.players[secondId].absent) ||
+    (teamSecond && !teamFirst && state.players[firstId].absent);
+  if(bringingInAbsent){
+    alert('That player is marked not present \u2014 mark them available first.');
+    render(state);
+    return;
+  }
+
+  const nameFirst = state.players[firstId].name;
+  const nameSecond = state.players[secondId].name;
+  const confirmed = confirm(`Swap ${nameFirst} and ${nameSecond}?`);
+  if(!confirmed){
+    render(state);
+    return;
+  }
+
+  const ok = swapPlayers(state, firstId, secondId);
+  if(!ok){
+    render(state);
+    return;
+  }
+  await saveState(state);
+  showToast(`Swapped ${nameFirst} and ${nameSecond}`);
+  render(state);
+}
+
+async function handleDeletePlayer(id){
+  if(!ensureUnlocked()) return;
+  state = await loadState();
+  const player = state.players[id];
+  if(!player) return;
+  const name = player.name;
+  const confirmed = confirm(`Remove ${name} completely? This can't be undone \u2014 they'll need to rejoin from scratch if this was a mistake.`);
+  if(!confirmed) return;
+  deletePlayerCompletely(state, id);
+  await saveState(state);
+  showToast(`${name} removed`);
+  render(state);
+}
+
+async function handleJoin(){
+  const input = document.getElementById('nameInput');
+  const name = input.value.trim();
+  if(!name) return;
+  const btn = document.getElementById('joinBtn');
+  btn.disabled = true;
+  state = await loadState();
+
+  const isDup = Object.values(state.players).some(p => p.name.trim().toLowerCase() === name.toLowerCase());
+  if(isDup){
+    if(isUnlocked()){
+      const proceed = confirm(`That name is already added. Choose another name, but please don't add yourself twice.\n\nAdd "${name}" again anyway?`);
+      if(!proceed){
+        btn.disabled = false;
+        input.focus();
+        return;
+      }
+    } else {
+      alert(`That name is already added. Choose another name, but please don't add yourself twice.`);
+      btn.disabled = false;
+      input.focus();
+      return;
+    }
+  }
+
+  addPlayer(state, name);
+  await saveState(state);
+  input.value = '';
+  btn.disabled = false;
+  showToast(`${name} joined the queue`);
+  render(state);
+  input.focus();
+}
+
+document.getElementById('joinBtn').addEventListener('click', handleJoin);
+document.getElementById('nameInput').addEventListener('keydown', (e)=>{
+  if(e.key==='Enter') handleJoin();
+});
+document.getElementById('adminBtn').addEventListener('click', ()=>{
+  if(isUnlocked()){
+    if(confirm('Lock admin controls on this device?')){
+      localStorage.removeItem(ADMIN_KEY);
+      updateAdminBtn();
+    }
+  } else {
+    requestUnlock();
+  }
+});
+document.getElementById('resetBtn').addEventListener('click', async ()=>{
+  if(!ensureUnlocked()) return;
+  if(!confirm('Start a new night? This clears everyone on the list and the court.')) return;
+  state = defaultState();
+  await saveState(state);
+  render(state);
+  showToast('New night started');
+});
+
+// live refresh so every phone stays in sync
+let inFlight = false;
+async function poll(){
+  if(inFlight) return;
+  inFlight = true;
+  try{
+    const fresh = await loadState();
+    // avoid clobbering an in-progress name entry
+    const typing = document.activeElement === document.getElementById('nameInput') && document.getElementById('nameInput').value.length>0;
+    if(!typing){
+      state = fresh;
+      render(state);
+    }
+  }catch(e){ /* ignore transient errors */ }
+  inFlight = false;
+}
+
+(async function init(){
+  updateAdminBtn();
+  document.getElementById('versionFooter').textContent = `Script last updated: ${SCRIPT_UPDATED}`;
+  state = await loadState();
+  render(state);
+  setInterval(updateGameTimer, 1000);
+  if(hasFirebase){
+    // instant updates on every phone whenever anyone changes the state
+    fbRef.on('value', (snap)=>{
+      const val = snap.val();
+      const typing = document.activeElement === document.getElementById('nameInput') && document.getElementById('nameInput').value.length>0;
+      if(val && !typing){
+        state = normalizeState(val);
+        render(state);
+      }
+    });
+    startPresence();
+  } else {
+    setInterval(poll, 2500);
+  }
+})();
+</script>
+</body>
+</html>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>SBC Court Queue</title>
