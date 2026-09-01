@@ -62,14 +62,13 @@
   .streak{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;}
   .roster{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:5px;}
   .roster li{
-    font-size:13.5px; color:var(--chalk); padding:5px 6px 4px; border-radius:6px; display:flex;
-    flex-direction:column; gap:1px;
+    font-size:13.5px; color:var(--chalk); padding:6px 8px; border-radius:6px; display:flex;
+    flex-direction:column; gap:2px;
     background:rgba(76,209,122,0.14); border:1px solid rgba(76,209,122,0.45);
   }
-  .roster li .roster-row-top{display:flex; align-items:center; justify-content:space-between; gap:4px;}
-  .roster li .roster-row-sub{font-size:10px; color:var(--muted); padding-left:2px;}
-  .roster li .rname{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;}
-  .roster li .roster-actions{display:flex; align-items:center; gap:2px; flex-shrink:0;}
+  .roster li .rname{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600;}
+  .roster li .roster-row-sub{font-size:10px; color:var(--muted);}
+  .roster li .roster-row-btns{display:flex; align-items:center; gap:6px; margin-top:2px;}
   .roster li.empty{color:var(--muted); font-style:italic; background:transparent; border:1px dashed var(--line); display:block;}
   .edit-btn{
     background:none; border:1px solid var(--line); color:var(--muted); font-size:13px;
@@ -263,7 +262,7 @@ function uid(){
 // ---- config / version info ----
 // Update this line by hand any time you save a new version of this file, so
 // everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "September 1, 2026 2:26 PM EDT";
+const SCRIPT_UPDATED = "September 1, 2026 2:35 PM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -681,7 +680,10 @@ function undoLastGame(s){
 
   // anyone who joined AFTER this snapshot was taken shouldn't be erased by
   // going back in time \u2014 fold them back onto the bench so everybody who
-  // signed up stays on the list, even for games they weren't around for yet
+  // signed up stays on the list, even for games they weren't around for yet.
+  // Also: a rename is a correction (fixing a typo), not part of game history,
+  // so it should stick even when game progress gets reverted \u2014 always use
+  // whoever's CURRENT name, only totalGames/absent come from the snapshot.
   const currentPlayers = s.players || {};
   Object.keys(currentPlayers).forEach(id=>{
     if(!restored.players[id]){
@@ -691,6 +693,8 @@ function undoLastGame(s){
       if(!alreadyPlaced){
         restored.queue.push(id);
       }
+    } else {
+      restored.players[id].name = currentPlayers[id].name;
     }
   });
 
@@ -785,12 +789,12 @@ function render(s){
       const p = s.players[id];
       const gms = p ? p.totalGames : 0;
       return `<li>
-        <div class="roster-row-top">
+        <div class="rname">${escapeHtml(playerName(s,id))}</div>
+        <div class="roster-row-sub">${gms} gms</div>
+        <div class="roster-row-btns">
           <button class="swap-btn ${swapSelectionId===id?'selected':''}" data-swap="${id}" title="Select to swap">\u2194</button>
-          <span class="rname">${escapeHtml(playerName(s,id))}</span>
           <button class="edit-btn" data-edit="${id}" title="Edit name">\u270E</button>
         </div>
-        <div class="roster-row-sub">${gms} game${gms===1?'':'s'} played</div>
       </li>`;
     }).join('');
   };
