@@ -197,7 +197,7 @@
   body.tv-mode #app{
     max-width:1500px;
     display:grid;
-    grid-template-columns:1.4fr 1fr;
+    grid-template-columns:1.9fr 1fr;
     grid-template-areas:
       "head head"
       "main side"
@@ -205,6 +205,7 @@
     gap:14px 28px;
     align-items:start;
     padding:18px 22px 40px;
+    transition:transform 3s ease-in-out;
   }
   body.tv-mode .head{grid-area:head;}
   /* main/side are single, non-spanning grid cells sized purely by their own
@@ -227,8 +228,9 @@
   body.tv-mode .roster li .roster-row-sub{font-size:13px;}
   body.tv-mode .bench-head h2{font-size:22px;}
   body.tv-mode .bench-head h2 .whos-next{font-size:15px;}
-  body.tv-mode .bench-list li{font-size:16px; padding:8px 10px;}
-  body.tv-mode .bench-list li .pos{width:30px; height:30px; font-size:16px;}
+  body.tv-mode .bench-list li{font-size:14px; padding:7px 9px; gap:6px;}
+  body.tv-mode .bench-list li .pos{width:27px; height:27px; font-size:14px;}
+  body.tv-mode .games-away{font-size:9px;}
   body.tv-mode .btn{font-size:20px; padding:15px 10px;}
 </style>
 </head>
@@ -314,7 +316,7 @@ function uid(){
 // ---- config / version info ----
 // Update this line by hand any time you save a new version of this file, so
 // everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "September 2, 2026 1:10 PM EDT";
+const SCRIPT_UPDATED = "September 2, 2026 3:43 PM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -369,6 +371,33 @@ function applyTvMode(){
     btn.classList.toggle('admin-on', on);
   }
   layoutTvSections(on);
+  if(on){ startBurnInProtection(); } else { stopBurnInProtection(); }
+}
+
+// ---- TV burn-in protection ----
+// Same idea real TVs/signage use: nudge the whole page a few pixels every so
+// often so static bright shapes (team panels, buttons, headings) don't sit on
+// the exact same pixels for hours on end. Small and slow enough to be
+// invisible in normal viewing, but enough to meaningfully reduce burn-in risk
+// on a display left on the same screen for an entire pickup session.
+let burnInInterval = null;
+let burnInIdx = 0;
+const BURNIN_OFFSETS = [
+  {x:0, y:0}, {x:5, y:3}, {x:-5, y:-3}, {x:3, y:-5}, {x:-3, y:5}, {x:0, y:-4}, {x:4, y:0}
+];
+function startBurnInProtection(){
+  stopBurnInProtection();
+  burnInInterval = setInterval(()=>{
+    burnInIdx = (burnInIdx + 1) % BURNIN_OFFSETS.length;
+    const o = BURNIN_OFFSETS[burnInIdx];
+    const app = document.getElementById('app');
+    if(app) app.style.transform = `translate(${o.x}px, ${o.y}px)`;
+  }, 3 * 60 * 1000); // shift every 3 minutes
+}
+function stopBurnInProtection(){
+  if(burnInInterval){ clearInterval(burnInInterval); burnInInterval = null; }
+  const app = document.getElementById('app');
+  if(app) app.style.transform = '';
 }
 
 // Physically moves the join/court/history/bench blocks between the normal
@@ -896,7 +925,6 @@ function render(s){
         <span class="rname">${escapeHtml(playerName(s,id))}</span>
         <span class="roster-row-sub">${gms} gms</span>
         <button class="edit-btn" data-edit="${id}" title="Edit name">\u270E</button>
-        <button class="toggle-btn avail" data-toggle="${id}" title="Not playing next game">\u2611</button>
       </li>`;
     }).join('');
   };
