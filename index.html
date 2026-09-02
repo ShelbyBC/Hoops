@@ -191,6 +191,42 @@
     z-index:50; white-space:nowrap;
   }
   .toast.show{opacity:1;}
+
+  /* ---- TV Mode: wide landscape layout for a large screen across the gym ---- */
+  body.tv-mode{ }
+  body.tv-mode #app{
+    max-width:1500px;
+    display:grid;
+    grid-template-columns:1.4fr 1fr;
+    grid-template-areas:
+      "head head"
+      "join join"
+      "court side"
+      "footer footer";
+    gap:14px 28px;
+    align-items:start;
+    padding:18px 22px 40px;
+  }
+  body.tv-mode .head{grid-area:head;}
+  body.tv-mode .join{grid-area:join; max-width:520px; margin:0 auto; width:100%;}
+  body.tv-mode .court{grid-area:court;}
+  body.tv-mode .tv-side-col{grid-area:side; display:flex; flex-direction:column; gap:6px; max-height:82vh; overflow-y:auto; padding-right:4px;}
+  body.tv-mode .viewer-footer{grid-column:1/-1;}
+
+  body.tv-mode .head h1{font-size:38px;}
+  body.tv-mode .head .sub{font-size:14px;}
+  body.tv-mode .court-heading{font-size:28px;}
+  body.tv-mode .game-timer{font-size:18px; padding:4px 12px;}
+  body.tv-mode .team-label .name{font-size:26px;}
+  body.tv-mode .streak{font-size:13px;}
+  body.tv-mode .roster li{font-size:19px; padding:10px 10px;}
+  body.tv-mode .roster li .rname{font-size:21px;}
+  body.tv-mode .roster li .roster-row-sub{font-size:13px;}
+  body.tv-mode .bench-head h2{font-size:22px;}
+  body.tv-mode .bench-head h2 .whos-next{font-size:15px;}
+  body.tv-mode .bench-list li{font-size:16px; padding:8px 10px;}
+  body.tv-mode .bench-list li .pos{width:30px; height:30px; font-size:16px;}
+  body.tv-mode .btn{font-size:20px; padding:15px 10px;}
 </style>
 </head>
 <body>
@@ -206,8 +242,9 @@
         </div>
       </div>
     </div>
-    <div style="display:flex; gap:6px;">
+    <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
       <button class="reset-btn" id="adminBtn">&#128274; Admin</button>
+      <button class="reset-btn" id="tvModeBtn">TV Mode</button>
       <button class="reset-btn" id="resetBtn">New Night</button>
     </div>
   </div>
@@ -219,17 +256,23 @@
 
   <div class="court" id="courtWrap"></div>
 
-  <div class="bench-head">
-    <h2>Bench <span class="whos-next">Who's got next</span></h2>
-    <span id="benchCount">0 waiting</span>
-  </div>
-  <ul class="bench-list" id="benchList"></ul>
+  <div class="tv-side-col">
+    <div class="bench-section">
+      <div class="bench-head">
+        <h2>Bench <span class="whos-next">Who's got next</span></h2>
+        <span id="benchCount">0 waiting</span>
+      </div>
+      <ul class="bench-list" id="benchList"></ul>
+    </div>
 
-  <div class="bench-head" style="margin-top:20px;">
-    <h2>History</h2>
-    <span id="historyCount">0 games played tonight</span>
+    <div class="history-section">
+      <div class="bench-head" style="margin-top:20px;">
+        <h2>History</h2>
+        <span id="historyCount">0 games played tonight</span>
+      </div>
+      <ul class="bench-list hist-list" id="historyList"></ul>
+    </div>
   </div>
-  <ul class="bench-list hist-list" id="historyList"></ul>
 
   <div class="viewer-footer" id="viewerCount"></div>
   <div class="viewer-footer" id="versionFooter"></div>
@@ -267,7 +310,7 @@ function uid(){
 // ---- config / version info ----
 // Update this line by hand any time you save a new version of this file, so
 // everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "September 2, 2026 8:40 AM EDT";
+const SCRIPT_UPDATED = "September 2, 2026 10:57 AM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -302,6 +345,24 @@ function updateAdminBtn(){
   } else {
     btn.textContent = '\u{1F512} Admin';
     btn.classList.remove('admin-on');
+  }
+}
+
+// ---- TV mode ----
+// A per-device display preference (like the admin lock), not shared state \u2014
+// switches this browser into a wide landscape layout with bigger text, meant
+// for a TV/tablet mounted courtside rather than someone's phone.
+const TV_MODE_KEY = 'sbc-tv-mode';
+function isTvMode(){
+  return localStorage.getItem(TV_MODE_KEY) === 'yes';
+}
+function applyTvMode(){
+  const on = isTvMode();
+  document.body.classList.toggle('tv-mode', on);
+  const btn = document.getElementById('tvModeBtn');
+  if(btn){
+    btn.textContent = on ? 'Exit TV Mode' : 'TV Mode';
+    btn.classList.toggle('admin-on', on);
   }
 }
 
@@ -1159,6 +1220,10 @@ document.getElementById('adminBtn').addEventListener('click', ()=>{
     requestUnlock();
   }
 });
+document.getElementById('tvModeBtn').addEventListener('click', ()=>{
+  localStorage.setItem(TV_MODE_KEY, isTvMode() ? 'no' : 'yes');
+  applyTvMode();
+});
 document.getElementById('resetBtn').addEventListener('click', async ()=>{
   if(!ensureUnlocked()) return;
   if(!confirm('Start a new night? This clears everyone on the list and the court.')) return;
@@ -1187,6 +1252,7 @@ async function poll(){
 
 (async function init(){
   updateAdminBtn();
+  applyTvMode();
   document.getElementById('versionFooter').textContent = `Script last updated: ${SCRIPT_UPDATED}`;
   state = await loadState();
   render(state);
