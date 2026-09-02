@@ -199,18 +199,20 @@
     display:grid;
     grid-template-columns:1.4fr 1fr;
     grid-template-areas:
-      "head head"
-      "join join"
-      "court side"
-      "footer footer";
+      "head    head"
+      "join    bench"
+      "court   bench"
+      "history history"
+      "footer  footer";
     gap:14px 28px;
     align-items:start;
     padding:18px 22px 40px;
   }
   body.tv-mode .head{grid-area:head;}
-  body.tv-mode .join{grid-area:join; max-width:520px; margin:0 auto; width:100%;}
+  body.tv-mode .join{grid-area:join; max-width:600px; margin:0;}
   body.tv-mode .court{grid-area:court;}
-  body.tv-mode .tv-side-col{grid-area:side; display:flex; flex-direction:column; gap:6px; max-height:82vh; overflow-y:auto; padding-right:4px;}
+  body.tv-mode .bench-section{grid-area:bench;}
+  body.tv-mode .history-section{grid-area:history; margin-top:20px;}
   body.tv-mode .viewer-footer{grid-column:1/-1;}
 
   body.tv-mode .head h1{font-size:38px;}
@@ -256,22 +258,20 @@
 
   <div class="court" id="courtWrap"></div>
 
-  <div class="tv-side-col">
-    <div class="bench-section">
-      <div class="bench-head">
-        <h2>Bench <span class="whos-next">Who's got next</span></h2>
-        <span id="benchCount">0 waiting</span>
-      </div>
-      <ul class="bench-list" id="benchList"></ul>
+  <div class="bench-section">
+    <div class="bench-head">
+      <h2>Bench <span class="whos-next">Who's got next</span></h2>
+      <span id="benchCount">0 waiting</span>
     </div>
+    <ul class="bench-list" id="benchList"></ul>
+  </div>
 
-    <div class="history-section">
-      <div class="bench-head" style="margin-top:20px;">
-        <h2>History</h2>
-        <span id="historyCount">0 games played tonight</span>
-      </div>
-      <ul class="bench-list hist-list" id="historyList"></ul>
+  <div class="history-section">
+    <div class="bench-head" style="margin-top:20px;">
+      <h2>History</h2>
+      <span id="historyCount">0 games played tonight</span>
     </div>
+    <ul class="bench-list hist-list" id="historyList"></ul>
   </div>
 
   <div class="viewer-footer" id="viewerCount"></div>
@@ -310,7 +310,7 @@ function uid(){
 // ---- config / version info ----
 // Update this line by hand any time you save a new version of this file, so
 // everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "September 2, 2026 10:57 AM EDT";
+const SCRIPT_UPDATED = "September 2, 2026 11:10 AM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
