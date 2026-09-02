@@ -50,11 +50,34 @@
   .reset-btn:active{background:var(--panel-2);}
 
   /* court */
-  .court{position:relative; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:10px; margin-bottom:16px;}
+  .court{position:relative; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:10px; margin-bottom:16px; overflow:hidden;}
   .court-row{display:flex; align-items:stretch; gap:5px; position:relative;}
   .team{flex:1; min-width:0; background:var(--panel-2); border-radius:12px; padding:10px 6px 12px; border-top:3px solid transparent;}
-  .team.a{border-top-color:var(--red);}
-  .team.b{border-top-color:var(--blue);}
+  .team.a{border-top-color:var(--red); animation:teamBreatheA 6s ease-in-out infinite;}
+  .team.b{border-top-color:var(--blue); animation:teamBreatheB 6s ease-in-out infinite;}
+  @keyframes teamBreatheA{
+    0%,100%{box-shadow:0 -2px 0 rgba(194,59,46,0);}
+    50%{box-shadow:0 -2px 16px rgba(194,59,46,0.4);}
+  }
+  @keyframes teamBreatheB{
+    0%,100%{box-shadow:0 -2px 0 rgba(46,111,149,0);}
+    50%{box-shadow:0 -2px 16px rgba(46,111,149,0.4);}
+  }
+  /* slow ambient light sweep across the court panel, mostly decorative */
+  .court::after{
+    content:''; position:absolute; top:0; left:-60%; width:35%; height:100%;
+    background:linear-gradient(100deg, transparent, rgba(232,179,76,0.05), transparent);
+    animation:courtSweep 16s ease-in-out infinite; pointer-events:none;
+  }
+  @keyframes courtSweep{
+    0%{left:-60%;} 45%{left:130%;} 100%{left:130%;}
+  }
+  /* plays once whenever a new game's rosters appear */
+  @keyframes gameReveal{
+    0%{opacity:0; transform:translateY(6px);}
+    100%{opacity:1; transform:translateY(0);}
+  }
+  .game-reveal-anim{animation:gameReveal 0.6s ease-out;}
   .team-label{display:flex; flex-direction:column; align-items:flex-start; gap:2px; margin-bottom:8px;}
   .team-label .name{font-family:'Teko',sans-serif; font-size:19px; letter-spacing:0.04em; text-transform:uppercase;}
   .team.a .name{color:#e8867a;}
@@ -89,6 +112,14 @@
     font-family:'Inter',sans-serif; font-size:13px; letter-spacing:0; text-transform:none;
     color:var(--chalk); background:var(--panel-2); border:1px solid var(--line);
     border-radius:6px; padding:2px 8px; margin-left:6px; font-variant-numeric:tabular-nums;
+  }
+  .game-timer.warn{
+    color:var(--gold); border-color:var(--gold);
+    animation:timerPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes timerPulse{
+    0%,100%{box-shadow:0 0 0 rgba(232,179,76,0);}
+    50%{box-shadow:0 0 10px rgba(232,179,76,0.75);}
   }
 
   .action{margin-top:14px;}
@@ -158,7 +189,16 @@
   }
   .empty-bench{color:var(--muted); font-size:13px; text-align:center; padding:16px 0;}
 
-  .bench-list li.next-up{border-color:#4fa3d1; background:rgba(79,163,209,0.14);}
+  .bench-list li.next-up{
+    border-color:#4fa3d1;
+    background-image:linear-gradient(100deg, rgba(79,163,209,0.08) 20%, rgba(79,163,209,0.32) 50%, rgba(79,163,209,0.08) 80%);
+    background-size:220% 100%;
+    animation:shimmerSweep 3.2s linear infinite;
+  }
+  @keyframes shimmerSweep{
+    0%{background-position:120% 0;}
+    100%{background-position:-20% 0;}
+  }
   .bench-list li.next-up .pos{border-color:#6fc0e8; color:#9dd6f0;}
   .games-away{font-size:10px; color:var(--muted); letter-spacing:0.02em; flex-shrink:0; white-space:nowrap;}
   .games-away.soon{color:#9dd6f0; text-transform:uppercase; letter-spacing:0.05em; font-weight:600;}
@@ -291,6 +331,7 @@ const STORAGE_KEY = 'pickup-state-v1';
 let state = null;
 let saving = false;
 let swapSelectionId = null; // id of the on-court player currently armed for a team swap, if any
+let lastRenderedGameNumber = null; // used to trigger the roster reveal animation only when the game actually changes
 
 function defaultState(){
   return {
@@ -316,7 +357,7 @@ function uid(){
 // ---- config / version info ----
 // Update this line by hand any time you save a new version of this file, so
 // everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "September 2, 2026 3:43 PM EDT";
+const SCRIPT_UPDATED = "September 2, 2026 3:49 PM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -491,6 +532,7 @@ function updateGameTimer(){
   if(!el) return;
   if(!state || !state.gameNumber || !state.gameStartedAt){
     el.textContent = '0:00';
+    el.classList.remove('warn');
     return;
   }
   const rawElapsedSec = Math.max(0, Math.floor((Date.now() - state.gameStartedAt) / 1000));
@@ -498,6 +540,7 @@ function updateGameTimer(){
   const mm = Math.floor(elapsedSec / 60);
   const ss = elapsedSec % 60;
   el.textContent = `${mm}:${ss < 10 ? '0' : ''}${ss}`;
+  el.classList.toggle('warn', elapsedSec >= GAME_TIMER_CAP_SEC - 60);
 }
 
 // Firebase silently drops empty arrays/objects when saving, so a fresh read
@@ -958,9 +1001,12 @@ function render(s){
     return slot.stint===0 ? 'Playing 1st game' : 'Playing 2nd game';
   };
 
+  const isNewGame = s.gameNumber > 0 && s.gameNumber !== lastRenderedGameNumber;
+  lastRenderedGameNumber = s.gameNumber;
+
   wrap.innerHTML = `
     ${s.gameNumber>0 ? `<div class="court-heading">Currently on court &mdash; Game ${s.gameNumber} <span class="game-timer" id="gameTimer">0:00</span></div>` : ''}
-    <div class="court-row">
+    <div class="court-row ${isNewGame ? 'game-reveal-anim' : ''}">
       <div class="team a">
         <div class="team-label">
           <span class="name">Team A</span>
