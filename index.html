@@ -198,22 +198,22 @@
     max-width:1500px;
     display:grid;
     grid-template-columns:1.4fr 1fr;
-    grid-template-rows:auto min-content auto auto auto;
     grid-template-areas:
-      "head    head"
-      "join    bench"
-      "court   bench"
-      "history history"
-      "footer  footer";
+      "head head"
+      "main side"
+      "footer footer";
     gap:14px 28px;
     align-items:start;
     padding:18px 22px 40px;
   }
   body.tv-mode .head{grid-area:head;}
-  body.tv-mode .join{grid-area:join; max-width:600px; margin:0;}
-  body.tv-mode .court{grid-area:court;}
-  body.tv-mode .bench-section{grid-area:bench;}
-  body.tv-mode .history-section{grid-area:history; margin-top:20px;}
+  /* main/side are single, non-spanning grid cells sized purely by their own
+     stacked content (moved here via JS), so a long bench list can never
+     influence the height of the join/court column \u2014 no shared row tracks. */
+  body.tv-mode #tvMainCol{grid-area:main; display:flex; flex-direction:column; gap:16px;}
+  body.tv-mode #tvSideCol{grid-area:side; display:flex; flex-direction:column;}
+  body.tv-mode .join{max-width:600px; margin:0;}
+  body.tv-mode .history-section{margin-top:20px;}
   body.tv-mode .viewer-footer{grid-column:1/-1;}
 
   body.tv-mode .head h1{font-size:38px;}
@@ -251,6 +251,9 @@
       <button class="reset-btn" id="resetBtn">New Night</button>
     </div>
   </div>
+
+  <div id="tvMainCol"></div>
+  <div id="tvSideCol"></div>
 
   <div class="join">
     <input id="nameInput" type="text" placeholder="Type in your name then hit join" maxlength="24" autocomplete="off">
@@ -311,7 +314,7 @@ function uid(){
 // ---- config / version info ----
 // Update this line by hand any time you save a new version of this file, so
 // everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "September 2, 2026 11:17 AM EDT";
+const SCRIPT_UPDATED = "September 2, 2026 1:10 PM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -364,6 +367,36 @@ function applyTvMode(){
   if(btn){
     btn.textContent = on ? 'Exit TV Mode' : 'TV Mode';
     btn.classList.toggle('admin-on', on);
+  }
+  layoutTvSections(on);
+}
+
+// Physically moves the join/court/history/bench blocks between the normal
+// flat phone-mode order and the two independent TV-mode columns, rather than
+// relying on CSS Grid areas that share row tracks (which let a long bench
+// list inflate the join/court rows and leave a gap). Moving the actual
+// elements keeps each column's height determined only by its own content.
+function layoutTvSections(on){
+  const mainCol = document.getElementById('tvMainCol');
+  const sideCol = document.getElementById('tvSideCol');
+  const join = document.querySelector('.join');
+  const court = document.querySelector('.court');
+  const bench = document.querySelector('.bench-section');
+  const history = document.querySelector('.history-section');
+  if(!mainCol || !sideCol || !join || !court || !bench || !history) return;
+
+  if(on){
+    mainCol.appendChild(join);
+    mainCol.appendChild(court);
+    mainCol.appendChild(history);
+    sideCol.appendChild(bench);
+  } else {
+    // restore the normal phone-mode order: join, court, bench, history,
+    // inserted back right before the (now empty) tvMainCol anchor
+    mainCol.parentNode.insertBefore(join, mainCol);
+    mainCol.parentNode.insertBefore(court, mainCol);
+    mainCol.parentNode.insertBefore(bench, mainCol);
+    mainCol.parentNode.insertBefore(history, mainCol);
   }
 }
 
