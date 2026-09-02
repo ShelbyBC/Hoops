@@ -63,15 +63,6 @@
     0%,100%{border-top-color:var(--blue);}
     50%{border-top-color:#6fc0e8;}
   }
-  /* slow ambient light sweep across the court panel, mostly decorative */
-  .court::after{
-    content:''; position:absolute; top:0; left:-60%; width:35%; height:100%;
-    background:linear-gradient(100deg, transparent, rgba(232,179,76,0.05), transparent);
-    animation:courtSweep 16s ease-in-out infinite; pointer-events:none;
-  }
-  @keyframes courtSweep{
-    0%{left:-60%;} 45%{left:130%;} 100%{left:130%;}
-  }
   /* plays once whenever a new game's rosters appear */
   @keyframes gameReveal{
     0%{opacity:0; transform:translateY(6px);}
@@ -361,7 +352,7 @@ function uid(){
 // ---- config / version info ----
 // Update this line by hand any time you save a new version of this file, so
 // everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "September 2, 2026 4:53 PM EDT";
+const SCRIPT_UPDATED = "September 2, 2026 4:56 PM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
