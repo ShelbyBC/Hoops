@@ -55,9 +55,11 @@
   }
   .reset-btn{background:none; border:1px solid var(--line); color:var(--muted); font-size:11px; letter-spacing:0.05em; text-transform:uppercase; padding:7px 10px; border-radius:7px; cursor:pointer;}
   .reset-btn:active{background:var(--panel-2);}
+  #reloadBtn{font-size:18px; line-height:1; padding:6px 11px;}
 
   /* court */
   .court{position:relative; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:10px; margin-bottom:16px; overflow:hidden;}
+  .bench-section{background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:10px; margin-bottom:16px;}
   .court-row{display:flex; align-items:stretch; gap:5px; position:relative;}
   .team{flex:1; min-width:0; background:var(--panel-2); border-radius:12px; padding:10px 6px 12px; border-top:3px solid transparent;}
   .team.a{border-top-color:var(--red); animation:lineGlowA 4s ease-in-out infinite;}
@@ -309,12 +311,12 @@
       <div>
         <h1>SBC Court Queue</h1>
         <div class="sub">
-          <div id="subheadLine1">loading&hellip;</div>
-          <div id="subheadLine2"></div>
+          <span id="subheadLine1">loading&hellip;</span> &mdash; <span id="subheadLine2"></span>
         </div>
       </div>
     </div>
     <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+      <button class="reset-btn" id="reloadBtn" title="Reload the page">&#8635;</button>
       <button class="reset-btn" id="adminBtn">&#128274; Admin</button>
       <button class="reset-btn" id="tvModeBtn">TV Mode</button>
       <button class="reset-btn" id="fullscreenBtn">Fullscreen</button>
@@ -387,7 +389,7 @@ function uid(){
 // ---- config / version info ----
 // Update this line by hand any time you save a new version of this file, so
 // everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "September 2, 2026 8:41 PM EDT";
+const SCRIPT_UPDATED = "September 2, 2026 8:53 PM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -1381,6 +1383,9 @@ document.getElementById('adminBtn').addEventListener('click', ()=>{
 document.getElementById('tvModeBtn').addEventListener('click', ()=>{
   localStorage.setItem(TV_MODE_KEY, isTvMode() ? 'no' : 'yes');
   applyTvMode();
+});
+document.getElementById('reloadBtn').addEventListener('click', ()=>{
+  location.reload();
 });
 document.getElementById('fullscreenBtn').addEventListener('click', ()=>{
   if(!document.fullscreenElement){
