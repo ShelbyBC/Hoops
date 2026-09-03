@@ -45,6 +45,10 @@
   .ball::before{left:50%; top:0; bottom:0; width:2px; transform:translateX(-50%);}
   .ball::after{top:50%; left:0; right:0; height:2px; transform:translateY(-50%);}
   .head h1{font-size:26px; margin:0; letter-spacing:0.03em; text-transform:uppercase; line-height:1;}
+  .version-tag{
+    font-family:'Inter',sans-serif; font-size:9px; letter-spacing:0.02em; text-transform:none;
+    color:#4a5058; font-weight:400; vertical-align:middle;
+  }
   .head .sub{font-size:11px; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase; margin-top:2px;}
   .count-num{display:inline-block;}
   .count-num.count-tick{animation:countTick 0.4s ease-out;}
@@ -272,12 +276,12 @@
       "head head"
       "main side"
       "footer footer";
-    gap:14px 14px;
+    gap:6px 14px;
     align-items:start;
     padding:18px 22px 40px;
     transition:transform 3s ease-in-out;
   }
-  body.tv-mode .head{grid-area:head;}
+  body.tv-mode .head{grid-area:head; padding-bottom:4px;}
   /* main/side are single, non-spanning grid cells sized purely by their own
      stacked content (moved here via JS), so a long bench list can never
      influence the height of the join/court column \u2014 no shared row tracks. */
@@ -294,6 +298,7 @@
   body.tv-mode [data-action="undo"]{display:none;}
 
   body.tv-mode .head h1{font-size:38px;}
+  body.tv-mode .version-tag{font-size:12px;}
   body.tv-mode .head .sub{font-size:14px;}
   body.tv-mode .court-heading{font-size:28px;}
   body.tv-mode .game-timer{font-size:18px; padding:4px 12px;}
@@ -315,7 +320,7 @@
     <div class="brand">
       <div class="ball"></div>
       <div>
-        <h1>SBC Court Queue</h1>
+        <h1>SBC Court Queue <span class="version-tag" id="versionTag"></span></h1>
         <div class="sub">
           <span id="subheadLine1">loading&hellip;</span> &mdash; <span id="subheadLine2"></span>
         </div>
@@ -357,7 +362,6 @@
   </div>
 
   <div class="viewer-footer" id="viewerCount"></div>
-  <div class="viewer-footer" id="versionFooter"></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -393,9 +397,10 @@ function uid(){
 }
 
 // ---- config / version info ----
-// Update this line by hand any time you save a new version of this file, so
-// everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "September 2, 2026 9:02 PM EDT";
+// Bump this by hand any time you save a new version of this file. Shown as a
+// small, low-contrast tag next to the title \u2014 visible if you know to look
+// for it, but not meant to be a prominent UI element.
+const VERSION = "v1.1";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -1439,7 +1444,7 @@ async function poll(){
 (async function init(){
   updateAdminBtn();
   applyTvMode();
-  document.getElementById('versionFooter').textContent = `Script last updated: ${SCRIPT_UPDATED}`;
+  document.getElementById('versionTag').textContent = VERSION;
   state = await loadState();
   render(state);
   setInterval(updateGameTimer, 1000);
