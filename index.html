@@ -46,6 +46,13 @@
   .ball::after{top:50%; left:0; right:0; height:2px; transform:translateY(-50%);}
   .head h1{font-size:26px; margin:0; letter-spacing:0.03em; text-transform:uppercase; line-height:1;}
   .head .sub{font-size:11px; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase; margin-top:2px;}
+  .count-num{display:inline-block;}
+  .count-num.count-tick{animation:countTick 0.4s ease-out;}
+  @keyframes countTick{
+    0%{transform:translateY(-8px); opacity:0;}
+    60%{transform:translateY(2px); opacity:1;}
+    100%{transform:translateY(0); opacity:1;}
+  }
   .reset-btn{background:none; border:1px solid var(--line); color:var(--muted); font-size:11px; letter-spacing:0.05em; text-transform:uppercase; padding:7px 10px; border-radius:7px; cursor:pointer;}
   .reset-btn:active{background:var(--panel-2);}
 
@@ -152,6 +159,11 @@
   .bench-head h2 .whos-next{
     font-family:'Inter',sans-serif; font-size:12px; letter-spacing:0; text-transform:none;
     color:#6fc0e8; font-weight:600; margin-left:4px;
+    animation:textBreathe 3s ease-in-out infinite;
+  }
+  @keyframes textBreathe{
+    0%,100%{opacity:1;}
+    50%{opacity:0.45;}
   }
   .bench-head span{font-size:12px; color:var(--muted);}
   .bench-list{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;}
@@ -198,12 +210,32 @@
     100%{background-position:-20% 0;}
   }
   .bench-list li.next-up .pos{border-color:#6fc0e8; color:#9dd6f0;}
+  .bench-list li.ready-flash{
+    border-color:#4caf6e;
+    animation:readyFlash 1s ease-in-out infinite;
+  }
+  @keyframes readyFlash{
+    0%,100%{background-color:rgba(76,175,110,0.08);}
+    50%{background-color:rgba(76,175,110,0.45);}
+  }
+  .bench-list li.ready-flash .pos{border-color:#4caf6e; color:#8fe0a8;}
   .bench-list li.absent{opacity:0.55;}
+  .bench-list li.bench-arrive{animation:benchArrive 0.45s ease-out;}
+  @keyframes benchArrive{
+    0%{opacity:0; transform:translateX(-14px);}
+    100%{opacity:1; transform:translateX(0);}
+  }
 
   .btn.back{
     width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--muted);
     margin-top:8px; padding:10px; font-size:15px;
   }
+  .next-row{display:flex; gap:8px;}
+  .next-row .btn.back-inline{
+    flex:1; background:var(--panel-2); border:1px solid var(--line); color:var(--muted);
+    font-size:20px; padding:13px 6px;
+  }
+  .next-row .btn.next{flex:3;}
   .admin-on{color:var(--gold) !important; border-color:var(--gold) !important;}
 
   .hist-list{max-height:none;}
@@ -249,8 +281,8 @@
      influence the height of the join/court column \u2014 no shared row tracks. */
   body.tv-mode #tvMainCol{grid-area:main; display:flex; flex-direction:column; gap:16px;}
   body.tv-mode #tvSideCol{grid-area:side; display:flex; flex-direction:column;}
-  body.tv-mode .join{max-width:600px; margin:0;}
-  body.tv-mode .history-section{margin-top:20px;}
+  body.tv-mode .join{display:none;}
+  body.tv-mode .history-section{display:none;}
   body.tv-mode .viewer-footer{grid-column:1/-1;}
 
   body.tv-mode .head h1{font-size:38px;}
@@ -285,6 +317,7 @@
     <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
       <button class="reset-btn" id="adminBtn">&#128274; Admin</button>
       <button class="reset-btn" id="tvModeBtn">TV Mode</button>
+      <button class="reset-btn" id="fullscreenBtn">Fullscreen</button>
       <button class="reset-btn" id="resetBtn">New Night</button>
     </div>
   </div>
@@ -327,6 +360,8 @@ let state = null;
 let saving = false;
 let swapSelectionId = null; // id of the on-court player currently armed for a team swap, if any
 let lastRenderedGameNumber = null; // used to trigger the roster reveal animation only when the game actually changes
+let lastSignedUpCount = null; // used to trigger the scoreboard-tick animation only when the signed-up count actually changes
+let lastBenchIds = new Set(); // used to only animate genuinely new arrivals on the bench, not every row on every render
 
 function defaultState(){
   return {
@@ -352,7 +387,7 @@ function uid(){
 // ---- config / version info ----
 // Update this line by hand any time you save a new version of this file, so
 // everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "September 2, 2026 4:56 PM EDT";
+const SCRIPT_UPDATED = "September 2, 2026 8:41 PM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -937,7 +972,9 @@ function render(s){
   const subLine2 = document.getElementById('subheadLine2');
   const signedUp = Object.keys(s.players).length;
   const stillIn = Object.values(s.players).filter(p=>!p.absent).length;
-  subLine1.textContent = `${signedUp} signed up`;
+  const signedUpChanged = lastSignedUpCount !== null && signedUp !== lastSignedUpCount;
+  lastSignedUpCount = signedUp;
+  subLine1.innerHTML = `<span class="count-num${signedUpChanged ? ' count-tick' : ''}">${signedUp}</span> signed up`;
   if(s.gameNumber===0){
     const needed = Math.max(0, 10 - stillIn);
     subLine2.textContent = `${stillIn} ready to play` + (needed>0 ? ` \u2014 need ${needed} more to start` : '');
@@ -968,15 +1005,22 @@ function render(s){
   };
 
   let actionHtml = '';
+  const hasUndo = !!(s.undoStack && s.undoStack.length>0);
   if(s.gameNumber===0){
     if(stillIn >= 10){
       actionHtml = `<button class="btn next" data-action="start-first-game">Start First Game</button>`;
     } else {
       actionHtml = `<div class="waiting-msg">Waiting on ${10 - stillIn} more to join before the first game can start.</div>`;
     }
+    if(hasUndo){
+      actionHtml += `<button class="btn back" data-action="undo">\u21A9 Back a game</button>`;
+    }
   } else if(!bothFull){
     const need = (5-s.slots.A.ids.length) + (5-s.slots.B.ids.length);
     actionHtml = `<div class="waiting-msg">Waiting on ${need} more from the bench to fill both teams.</div>`;
+    if(hasUndo){
+      actionHtml += `<button class="btn back" data-action="undo">\u21A9 Back a game</button>`;
+    }
   } else if(s.needsWinner){
     actionHtml = `
       <div class="waiting-msg" style="margin-bottom:8px;">Game 1 \u2014 who won?</div>
@@ -984,11 +1028,17 @@ function render(s){
         <button class="btn win-a" data-action="win-a">Team A won</button>
         <button class="btn win-b" data-action="win-b">Team B won</button>
       </div>`;
+    if(hasUndo){
+      actionHtml += `<button class="btn back" data-action="undo">\u21A9 Back a game</button>`;
+    }
+  } else if(hasUndo){
+    // combined row: back button gets 25%, next-game button gets the remaining 75%
+    actionHtml = `<div class="next-row">
+      <button class="btn back-inline" data-action="undo" title="Back a game">\u21A9</button>
+      <button class="btn next" data-action="next">Game finished \u2192 next game</button>
+    </div>`;
   } else {
     actionHtml = `<button class="btn next" data-action="next">Game finished \u2192 next game</button>`;
-  }
-  if(s.undoStack && s.undoStack.length>0){
-    actionHtml += `<button class="btn back" data-action="undo">\u21A9 Back a game</button>`;
   }
 
   const stintLabel = (slot) => {
@@ -1042,8 +1092,10 @@ function render(s){
   if(s.queue.length===0){
     benchList.innerHTML = `<li class="empty-bench" style="list-style:none;">Bench is empty \u2014 join above</li>`;
   } else {
-    const highlightCount = s.gameNumber===0 ? 10 : 5;
+    const isPreGame = s.gameNumber === 0;
     const activeOrdered = s.queue.filter(id => s.players[id] && !s.players[id].absent);
+    const readyToStart = isPreGame && activeOrdered.length >= 10;
+    const highlightCount = isPreGame ? (readyToStart ? 10 : 0) : 5;
     const nextUpSet = new Set(activeOrdered.slice(0, highlightCount));
 
     // roughly how many games until this bench position gets pulled onto the court \u2014
@@ -1061,11 +1113,14 @@ function render(s){
 
     let activePos = 0;
     const activeTotal = activeOrdered.length;
+    const currentBenchIds = new Set(s.queue);
     benchList.innerHTML = s.queue.map((id)=>{
       const p = s.players[id];
       if(!p) return '';
       const isAbsent = !!p.absent;
       const isNext = !isAbsent && nextUpSet.has(id);
+      const highlightClass = isNext ? (isPreGame ? 'ready-flash' : 'next-up') : '';
+      const isNewArrival = !lastBenchIds.has(id);
       let posLabel;
       let isFirst = false, isLast = false;
       if(isAbsent){ posLabel = '\u2014'; } else {
@@ -1074,7 +1129,7 @@ function render(s){
         isFirst = activePos===1;
         isLast = activePos===activeTotal;
       }
-      return `<li class="${isAbsent?'absent':''} ${isNext?'next-up':''}">
+      return `<li class="${isAbsent?'absent':''} ${highlightClass} ${isNewArrival?'bench-arrive':''}">
         <div class="pos">${posLabel}</div>
         <button class="swap-btn ${swapSelectionId===id?'selected':''}" data-swap="${id}" title="Select to swap">\u2194</button>
         <div class="bname ${isAbsent?'struck':''}">${escapeHtml(p.name)}</div>
@@ -1097,6 +1152,7 @@ function render(s){
     benchList.querySelectorAll('[data-swap]').forEach(btn=>{
       btn.addEventListener('click', ()=> handleArrowClick(btn.getAttribute('data-swap')));
     });
+    lastBenchIds = currentBenchIds;
   }
 
   // history
@@ -1325,6 +1381,19 @@ document.getElementById('adminBtn').addEventListener('click', ()=>{
 document.getElementById('tvModeBtn').addEventListener('click', ()=>{
   localStorage.setItem(TV_MODE_KEY, isTvMode() ? 'no' : 'yes');
   applyTvMode();
+});
+document.getElementById('fullscreenBtn').addEventListener('click', ()=>{
+  if(!document.fullscreenElement){
+    document.documentElement.requestFullscreen().catch(()=>{
+      alert('This browser blocked fullscreen. Some TV browsers don\u2019t support it \u2014 try your TV\u2019s own remote/menu option to hide the browser bar instead.');
+    });
+  } else {
+    document.exitFullscreen().catch(()=>{});
+  }
+});
+document.addEventListener('fullscreenchange', ()=>{
+  const btn = document.getElementById('fullscreenBtn');
+  if(btn) btn.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
 });
 document.getElementById('resetBtn').addEventListener('click', async ()=>{
   if(!ensureUnlocked()) return;
