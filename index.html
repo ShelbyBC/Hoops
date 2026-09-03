@@ -272,7 +272,7 @@
       "head head"
       "main side"
       "footer footer";
-    gap:14px 28px;
+    gap:14px 14px;
     align-items:start;
     padding:18px 22px 40px;
     transition:transform 3s ease-in-out;
@@ -286,6 +286,12 @@
   body.tv-mode .join{display:none;}
   body.tv-mode .history-section{display:none;}
   body.tv-mode .viewer-footer{grid-column:1/-1;}
+  /* "Back a game" and "Game finished -> next game" specifically don't show
+     in TV mode (Start First Game and the Game 1 winner buttons still do,
+     since those use different data-action values) */
+  body.tv-mode .next-row,
+  body.tv-mode [data-action="next"],
+  body.tv-mode [data-action="undo"]{display:none;}
 
   body.tv-mode .head h1{font-size:38px;}
   body.tv-mode .head .sub{font-size:14px;}
@@ -389,7 +395,7 @@ function uid(){
 // ---- config / version info ----
 // Update this line by hand any time you save a new version of this file, so
 // everyone can tell at a glance whether their browser has the latest copy.
-const SCRIPT_UPDATED = "September 2, 2026 8:53 PM EDT";
+const SCRIPT_UPDATED = "September 2, 2026 9:02 PM EDT";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -1398,7 +1404,11 @@ document.getElementById('fullscreenBtn').addEventListener('click', ()=>{
 });
 document.addEventListener('fullscreenchange', ()=>{
   const btn = document.getElementById('fullscreenBtn');
-  if(btn) btn.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
+  if(btn){
+    const on = !!document.fullscreenElement;
+    btn.textContent = on ? 'Exit Fullscreen' : 'Fullscreen';
+    btn.classList.toggle('admin-on', on);
+  }
 });
 document.getElementById('resetBtn').addEventListener('click', async ()=>{
   if(!ensureUnlocked()) return;
