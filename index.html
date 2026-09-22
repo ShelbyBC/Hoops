@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>SBC Court Queue</title>
+<title>Court Queue</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Teko:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- Only used if you fill in firebaseConfig below, for live sync across phones -->
@@ -40,10 +40,7 @@
   /* header */
   .head{display:flex; align-items:center; justify-content:space-between; padding:6px 2px 14px;}
   .head .brand{display:flex; align-items:center; gap:10px;}
-  .ball{width:22px; height:22px; border-radius:50%; background:radial-gradient(circle at 32% 30%, #f2a24a, var(--wood) 70%); position:relative; flex-shrink:0;}
-  .ball::before, .ball::after{content:""; position:absolute; background:#14181c; opacity:0.55;}
-  .ball::before{left:50%; top:0; bottom:0; width:2px; transform:translateX(-50%);}
-  .ball::after{top:50%; left:0; right:0; height:2px; transform:translateY(-50%);}
+  .brand-logo{width:32px; height:32px; flex-shrink:0; border-radius:6px; object-fit:contain;}
   .head h1{font-size:26px; margin:0; letter-spacing:0.03em; text-transform:uppercase; line-height:1;}
   .version-tag{
     font-family:'Inter',sans-serif; font-size:9px; letter-spacing:0.02em; text-transform:none;
@@ -109,6 +106,15 @@
   .roster li .edit-btn{order:4;}
   .roster li .toggle-btn{order:5;}
   .roster li.empty{color:var(--muted); font-style:italic; background:transparent; border:1px dashed var(--line); display:block;}
+  .roster li.pending-out{opacity:0.55;}
+  .roster li.pending-out .rname{color:var(--muted); text-decoration:line-through;}
+  .pending-btn{
+    background:none; border:1px solid var(--line); color:var(--muted); font-size:11px; line-height:1;
+    padding:2px 5px; border-radius:6px; cursor:pointer; flex-shrink:0; margin-right:3px;
+  }
+  .pending-btn.marked{
+    border-color:var(--gold); color:var(--gold); background:rgba(232,179,76,0.15);
+  }
   .edit-btn{
     background:none; border:1px solid var(--line); color:var(--muted); font-size:13px;
     padding:2px 6px; border-radius:6px; cursor:pointer; flex-shrink:0; line-height:1;
@@ -318,9 +324,9 @@
 <div id="app">
   <div class="head">
     <div class="brand">
-      <div class="ball"></div>
+      <img class="brand-logo" src="data:image/png;base64,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" alt="Logo">
       <div>
-        <h1>SBC Court Queue <span class="version-tag" id="versionTag"></span></h1>
+        <h1>Court Queue <span class="version-tag" id="versionTag"></span></h1>
         <div class="sub">
           <span id="subheadLine1">loading&hellip;</span> &mdash; <span id="subheadLine2"></span>
         </div>
@@ -400,7 +406,7 @@ function uid(){
 // Bump this by hand any time you save a new version of this file. Shown as a
 // small, low-contrast tag next to the title \u2014 visible if you know to look
 // for it, but not meant to be a prominent UI element.
-const VERSION = "v1.1";
+const VERSION = "v1.2";
 
 // ---- admin lock ----
 // Only people who know this PIN can pick winners, advance games, or undo.
@@ -716,7 +722,7 @@ function stampGameStartIfReady(s){
 
 function addPlayer(s, name){
   const id = uid();
-  s.players[id] = { name, totalGames: 0, absent: false };
+  s.players[id] = { name, totalGames: 0, absent: false, pendingUnavailable: false };
   s.queue.push(id);
   tryFillSlots(s);
   return id;
@@ -758,6 +764,49 @@ function toggleAvailability(s, id){
     player.absent = true;
     tryFillSlots(s);
   }
+}
+
+// marks/unmarks an on-court player as "leaving after this game" without
+// pulling them off court or backfilling their seat right away \u2014 lets
+// admins see who's free for the next game before committing to it. Their
+// name just greys out in place; they still finish out the current game.
+// Only takes effect (moved to the bench, marked absent) once the game
+// actually advances \u2014 see applyPendingUnavailable().
+function togglePendingUnavailable(s, id){
+  const player = s.players[id];
+  if(!player) return;
+  if(!teamContaining(s, id)) return; // only meaningful for players on court
+  player.pendingUnavailable = !player.pendingUnavailable;
+}
+
+// called at the moment a game actually advances (recordWinner / nextGame),
+// after the normal win/loss or 2-and-out handling has run. Anyone flagged
+// via togglePendingUnavailable \u2014 whether still on court (came from the
+// winning side) or already pushed to the queue this transition (came from
+// the losing/2-and-out side) \u2014 gets pulled off court if needed and
+// marked unavailable, landing at the FRONT of the bench so they're first
+// in line whenever they're marked available again.
+function applyPendingUnavailable(s){
+  ['A','B'].forEach(k=>{
+    const slot = s.slots[k];
+    slot.ids = slot.ids.filter(id=>{
+      const p = s.players[id];
+      if(p && p.pendingUnavailable){
+        p.pendingUnavailable = false;
+        p.absent = true;
+        if(!s.queue.includes(id)) s.queue.unshift(id);
+        return false;
+      }
+      return true;
+    });
+  });
+  s.queue.forEach(id=>{
+    const p = s.players[id];
+    if(p && p.pendingUnavailable){
+      p.pendingUnavailable = false;
+      p.absent = true;
+    }
+  });
 }
 
 // fully removes a player from the night \u2014 court, bench, and history-name
@@ -949,6 +998,7 @@ function recordWinner(s, winnerKey){
 
   s.needsWinner = false;
   s.gameNumber += 1;
+  applyPendingUnavailable(s);
   tryFillSlots(s);
 }
 
@@ -972,6 +1022,7 @@ function nextGame(s){
     }
   });
   s.gameNumber += 1;
+  applyPendingUnavailable(s);
   tryFillSlots(s);
 }
 
@@ -1008,10 +1059,14 @@ function render(s){
     return slot.ids.map(id=>{
       const p = s.players[id];
       const gms = p ? p.totalGames : 0;
-      return `<li>
+      const isPending = !!(p && p.pendingUnavailable);
+      return `<li class="${isPending?'pending-out':''}">
         <button class="swap-btn ${swapSelectionId===id?'selected':''}" data-swap="${id}" title="Select to swap">\u2194</button>
         <span class="rname">${escapeHtml(playerName(s,id))}</span>
-        <span class="roster-row-sub">${gms} gms</span>
+        <span class="roster-row-sub">
+          <button class="pending-btn ${isPending?'marked':''}" data-pending="${id}" title="${isPending?'Cancel \u2014 keep playing next game':'Mark leaving after this game'}">\u2193</button>
+          ${gms} gms
+        </span>
         <button class="edit-btn" data-edit="${id}" title="Edit name">\u270E</button>
       </li>`;
     }).join('');
@@ -1097,6 +1152,9 @@ function render(s){
   });
   wrap.querySelectorAll('[data-swap]').forEach(btn=>{
     btn.addEventListener('click', ()=> handleArrowClick(btn.getAttribute('data-swap')));
+  });
+  wrap.querySelectorAll('[data-pending]').forEach(btn=>{
+    btn.addEventListener('click', ()=> handlePendingUnavailable(btn.getAttribute('data-pending')));
   });
 
   // bench
@@ -1255,6 +1313,23 @@ async function handleToggleAvailability(id){
   toggleAvailability(state, id);
   await saveState(state);
   showToast(wasAbsent ? `${player.name} is back` : `${player.name} marked not present`);
+  render(state);
+}
+
+// down-arrow shown only on the 10 players currently on court: marks them as
+// leaving after this game finishes, without pulling them off court or
+// backfilling their seat right now. Tapping it again cancels the mark. The
+// actual move to the bench happens later, when the game advances \u2014 see
+// applyPendingUnavailable().
+async function handlePendingUnavailable(id){
+  if(!ensureUnlocked()) return;
+  state = await loadState();
+  const player = state.players[id];
+  if(!player) return;
+  const willBePending = !player.pendingUnavailable;
+  togglePendingUnavailable(state, id);
+  await saveState(state);
+  showToast(willBePending ? `${player.name} marked leaving after this game` : `${player.name} will keep playing`);
   render(state);
 }
 
