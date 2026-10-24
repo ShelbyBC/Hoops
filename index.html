@@ -611,30 +611,56 @@ function normalizeState(val){
   };
 }
 
+// Surfaces a sync failure to whoever's tapping buttons, instead of letting it
+// fail silently (which used to look like "nothing happens when I hit Join").
+// Only alerts once per page load so a bad connection doesn't spam popups.
+let syncErrorShown = false;
+function reportSyncError(e){
+  console.error('Sync error:', e);
+  const detail = (e && e.message) ? e.message : String(e);
+  if(!syncErrorShown){
+    syncErrorShown = true;
+    alert('Could not reach the shared database (' + detail + ').\n\nYour change was NOT saved. This usually means the Firebase database rules need attention \u2014 check the Firebase console, or ask Shannon/David. You can keep trying; this warning will only show once per page load.');
+  }
+}
+
 async function loadState(){
-  try{
-    if(hasFirebase){
-      const snap = await fbRef.once('value');
-      const val = snap.val();
-      if(val) return normalizeState(val);
-    } else if(hasCloudStorage){
+  if(hasFirebase){
+    // Deliberately NOT caught here: if Firebase denies the read (expired
+    // rules, offline, etc.) we must NOT silently fall back to a blank
+    // default state \u2014 doing that used to let a later save overwrite the
+    // real roster with an empty one. Let it throw so the caller knows the
+    // load failed instead of quietly handing back an empty night.
+    const snap = await fbRef.once('value');
+    const val = snap.val();
+    return val ? normalizeState(val) : defaultState();
+  } else if(hasCloudStorage){
+    try{
       const res = await window.storage.get(STORAGE_KEY, true);
       if(res && res.value) return JSON.parse(res.value);
-    } else {
+    }catch(e){ /* key doesn't exist yet */ }
+    return defaultState();
+  } else {
+    try{
       const raw = localStorage.getItem(STORAGE_KEY);
       if(raw) return JSON.parse(raw);
-    }
-  }catch(e){ /* key doesn't exist yet */ }
-  return defaultState();
+    }catch(e){ /* key doesn't exist yet */ }
+    return defaultState();
+  }
 }
 
 async function saveState(s){
-  if(hasFirebase){
-    await fbRef.set(s);
-  } else if(hasCloudStorage){
-    await window.storage.set(STORAGE_KEY, JSON.stringify(s), true);
-  } else {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  try{
+    if(hasFirebase){
+      await fbRef.set(s);
+    } else if(hasCloudStorage){
+      await window.storage.set(STORAGE_KEY, JSON.stringify(s), true);
+    } else {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    }
+  }catch(e){
+    reportSyncError(e);
+    throw e;
   }
 }
 
@@ -1258,61 +1284,73 @@ function escapeHtml(str){
 async function onAction(e){
   const action = e.currentTarget.getAttribute('data-action');
   if(!ensureUnlocked()) return;
-  state = await loadState();
-  if(action==='start-first-game'){
-    const ok = startFirstGame(state);
-    if(!ok) { render(state); return; }
+  try{
+    state = await loadState();
+    if(action==='start-first-game'){
+      const ok = startFirstGame(state);
+      if(!ok) { render(state); return; }
+    }
+    else if(action==='win-a') recordWinner(state, 'A');
+    else if(action==='win-b') recordWinner(state, 'B');
+    else if(action==='next') nextGame(state);
+    else if(action==='undo'){
+      const ok = undoLastGame(state);
+      if(!ok) return;
+    }
+    await saveState(state);
+    render(state);
+  }catch(e){
+    reportSyncError(e);
   }
-  else if(action==='win-a') recordWinner(state, 'A');
-  else if(action==='win-b') recordWinner(state, 'B');
-  else if(action==='next') nextGame(state);
-  else if(action==='undo'){
-    const ok = undoLastGame(state);
-    if(!ok) return;
-  }
-  await saveState(state);
-  render(state);
 }
 
 async function handleEditName(id){
   if(!ensureUnlocked()) return;
-  state = await loadState();
-  const player = state.players[id];
-  if(!player){ return; }
-  const currentName = player.name;
-  const input = prompt('Update name:', currentName);
-  if(input === null) return; // cancelled
-  const newName = input.trim();
-  if(!newName){
-    alert('Name cannot be empty.');
-    return;
-  }
-  if(newName === currentName) return;
+  try{
+    state = await loadState();
+    const player = state.players[id];
+    if(!player){ return; }
+    const currentName = player.name;
+    const input = prompt('Update name:', currentName);
+    if(input === null) return; // cancelled
+    const newName = input.trim();
+    if(!newName){
+      alert('Name cannot be empty.');
+      return;
+    }
+    if(newName === currentName) return;
 
-  const isDup = Object.entries(state.players).some(([pid,p]) =>
-    pid !== id && p.name.trim().toLowerCase() === newName.toLowerCase()
-  );
-  if(isDup){
-    const proceed = confirm(`"${newName}" is already on the list tonight. Rename anyway?`);
-    if(!proceed) return;
-  }
+    const isDup = Object.entries(state.players).some(([pid,p]) =>
+      pid !== id && p.name.trim().toLowerCase() === newName.toLowerCase()
+    );
+    if(isDup){
+      const proceed = confirm(`"${newName}" is already on the list tonight. Rename anyway?`);
+      if(!proceed) return;
+    }
 
-  state.players[id].name = newName;
-  await saveState(state);
-  showToast(`Renamed ${currentName} \u2192 ${newName}`);
-  render(state);
+    state.players[id].name = newName;
+    await saveState(state);
+    showToast(`Renamed ${currentName} \u2192 ${newName}`);
+    render(state);
+  }catch(e){
+    reportSyncError(e);
+  }
 }
 
 async function handleToggleAvailability(id){
   if(!ensureUnlocked()) return;
-  state = await loadState();
-  const player = state.players[id];
-  if(!player) return;
-  const wasAbsent = !!player.absent;
-  toggleAvailability(state, id);
-  await saveState(state);
-  showToast(wasAbsent ? `${player.name} is back` : `${player.name} marked not present`);
-  render(state);
+  try{
+    state = await loadState();
+    const player = state.players[id];
+    if(!player) return;
+    const wasAbsent = !!player.absent;
+    toggleAvailability(state, id);
+    await saveState(state);
+    showToast(wasAbsent ? `${player.name} is back` : `${player.name} marked not present`);
+    render(state);
+  }catch(e){
+    reportSyncError(e);
+  }
 }
 
 // down-arrow shown only on the 10 players currently on court: marks them as
@@ -1322,14 +1360,18 @@ async function handleToggleAvailability(id){
 // applyPendingUnavailable().
 async function handlePendingUnavailable(id){
   if(!ensureUnlocked()) return;
-  state = await loadState();
-  const player = state.players[id];
-  if(!player) return;
-  const willBePending = !player.pendingUnavailable;
-  togglePendingUnavailable(state, id);
-  await saveState(state);
-  showToast(willBePending ? `${player.name} marked leaving after this game` : `${player.name} will keep playing`);
-  render(state);
+  try{
+    state = await loadState();
+    const player = state.players[id];
+    if(!player) return;
+    const willBePending = !player.pendingUnavailable;
+    togglePendingUnavailable(state, id);
+    await saveState(state);
+    showToast(willBePending ? `${player.name} marked leaving after this game` : `${player.name} will keep playing`);
+    render(state);
+  }catch(e){
+    reportSyncError(e);
+  }
 }
 
 // arrow next to every name (bench or on-court): first tap arms a player for a
@@ -1356,65 +1398,73 @@ async function handleArrowClick(id){
   const secondId = id;
   swapSelectionId = null;
 
-  state = await loadState();
+  try{
+    state = await loadState();
 
-  if(!state.players[firstId] || !state.players[secondId]){
-    alert('One of those players is no longer on the list.');
+    if(!state.players[firstId] || !state.players[secondId]){
+      alert('One of those players is no longer on the list.');
+      render(state);
+      return;
+    }
+
+    const teamFirst = teamContaining(state, firstId);
+    const teamSecond = teamContaining(state, secondId);
+
+    if(teamFirst && teamSecond && teamFirst === teamSecond){
+      // picked two people from the same on-court team \u2014 just move the
+      // selection to whichever one was tapped most recently instead of erroring out
+      swapSelectionId = secondId;
+      render(state);
+      return;
+    }
+
+    // don't let an unavailable bench player get substituted straight onto the court
+    const bringingInAbsent =
+      (teamFirst && !teamSecond && state.players[secondId].absent) ||
+      (teamSecond && !teamFirst && state.players[firstId].absent);
+    if(bringingInAbsent){
+      alert('That player is marked not present \u2014 mark them available first.');
+      render(state);
+      return;
+    }
+
+    const nameFirst = state.players[firstId].name;
+    const nameSecond = state.players[secondId].name;
+    const confirmed = confirm(`Swap ${nameFirst} and ${nameSecond}?`);
+    if(!confirmed){
+      render(state);
+      return;
+    }
+
+    const ok = swapPlayers(state, firstId, secondId);
+    if(!ok){
+      render(state);
+      return;
+    }
+    await saveState(state);
+    showToast(`Swapped ${nameFirst} and ${nameSecond}`);
     render(state);
-    return;
+  }catch(e){
+    reportSyncError(e);
   }
-
-  const teamFirst = teamContaining(state, firstId);
-  const teamSecond = teamContaining(state, secondId);
-
-  if(teamFirst && teamSecond && teamFirst === teamSecond){
-    // picked two people from the same on-court team \u2014 just move the
-    // selection to whichever one was tapped most recently instead of erroring out
-    swapSelectionId = secondId;
-    render(state);
-    return;
-  }
-
-  // don't let an unavailable bench player get substituted straight onto the court
-  const bringingInAbsent =
-    (teamFirst && !teamSecond && state.players[secondId].absent) ||
-    (teamSecond && !teamFirst && state.players[firstId].absent);
-  if(bringingInAbsent){
-    alert('That player is marked not present \u2014 mark them available first.');
-    render(state);
-    return;
-  }
-
-  const nameFirst = state.players[firstId].name;
-  const nameSecond = state.players[secondId].name;
-  const confirmed = confirm(`Swap ${nameFirst} and ${nameSecond}?`);
-  if(!confirmed){
-    render(state);
-    return;
-  }
-
-  const ok = swapPlayers(state, firstId, secondId);
-  if(!ok){
-    render(state);
-    return;
-  }
-  await saveState(state);
-  showToast(`Swapped ${nameFirst} and ${nameSecond}`);
-  render(state);
 }
 
 async function handleDeletePlayer(id){
   if(!ensureUnlocked()) return;
-  state = await loadState();
-  const player = state.players[id];
-  if(!player) return;
-  const name = player.name;
-  const confirmed = confirm(`Remove ${name} completely? This can't be undone \u2014 they'll need to rejoin from scratch if this was a mistake.`);
-  if(!confirmed) return;
-  deletePlayerCompletely(state, id);
-  await saveState(state);
-  showToast(`${name} removed`);
-  render(state);
+  try{
+    state = await loadState();
+    const player = state.players[id];
+    if(!player) return;
+    const name = player.name;
+    const confirmed = confirm(`Remove ${name} completely? This can't be undone \u2014 they'll need to rejoin from scratch if this was a mistake.`);
+    if(!confirmed) return;
+    deletePlayerCompletely(state, id);
+    await saveState(state);
+    showToast(`${name} removed`);
+    render(state);
+  }catch(e){
+    reportSyncError(e);
+  }
 }
 
 async function handleJoin(){
@@ -1423,32 +1473,39 @@ async function handleJoin(){
   if(!name) return;
   const btn = document.getElementById('joinBtn');
   btn.disabled = true;
-  state = await loadState();
+  try{
+    state = await loadState();
 
-  const isDup = Object.values(state.players).some(p => p.name.trim().toLowerCase() === name.toLowerCase());
-  if(isDup){
-    if(isUnlocked()){
-      const proceed = confirm(`That name is already added. Choose another name, but please don't add yourself twice.\n\nAdd "${name}" again anyway?`);
-      if(!proceed){
-        btn.disabled = false;
+    const isDup = Object.values(state.players).some(p => p.name.trim().toLowerCase() === name.toLowerCase());
+    if(isDup){
+      if(isUnlocked()){
+        const proceed = confirm(`That name is already added. Choose another name, but please don't add yourself twice.\n\nAdd "${name}" again anyway?`);
+        if(!proceed){
+          input.focus();
+          return;
+        }
+      } else {
+        alert(`That name is already added. Choose another name, but please don't add yourself twice.`);
         input.focus();
         return;
       }
-    } else {
-      alert(`That name is already added. Choose another name, but please don't add yourself twice.`);
-      btn.disabled = false;
-      input.focus();
-      return;
     }
-  }
 
-  addPlayer(state, name);
-  await saveState(state);
-  input.value = '';
-  btn.disabled = false;
-  showToast(`${name} joined the queue`);
-  render(state);
-  input.focus();
+    addPlayer(state, name);
+    await saveState(state);
+    input.value = '';
+    showToast(`${name} joined the queue`);
+    render(state);
+    input.focus();
+  }catch(e){
+    // saveState() already alerts on its own failures; this also catches a
+    // failed loadState() (e.g. Firebase denying the read), which needs its
+    // own report since loadState doesn't alert for itself. Leaves the typed
+    // name in place so it isn't lost, and the button re-enables below.
+    reportSyncError(e);
+  }finally{
+    btn.disabled = false;
+  }
 }
 
 document.getElementById('joinBtn').addEventListener('click', handleJoin);
